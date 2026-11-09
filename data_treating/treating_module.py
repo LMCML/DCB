@@ -83,7 +83,7 @@ def treating_new_mes_function(mes):
                         img_format = "jpeg"
                     if int(m.get("data", {}).get("file_size")) > 24000000:
                         try:
-                            with open("data_treating/placeholder/Imagetoolargedownloadrejected.jpg", "rb") as i:
+                            with open("data_treating/placeholder/Imagetoolargedownloadrejected", "rb") as i:
                                 img_b64 = base64.b64encode(i.read()).decode("utf-8")
                                 a_total_message = {
                                     "type": "image_url",
@@ -109,7 +109,7 @@ def treating_new_mes_function(mes):
                             request_times += 1
                     else:
                         try:
-                            with open("data_treating/placeholder/imagedownloadfailed.jpg", "rb") as i:
+                            with open("data_treating/placeholder/imagedownloadfailed", "rb") as i:
                                 img_b64 = base64.b64encode(i.read()).decode("utf-8")
                                 a_total_message = {
                                     "type": "image_url",
