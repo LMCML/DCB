@@ -26,9 +26,9 @@ def deploy_init(url, token):
     WS_URL = url
     ACCESS_TOKEN = token
 
-send_delay = (5, 5)
-send_interval = (1, 5)
-chat_interval = (300, 600)
+send_delay = (7, 10)
+send_interval = (1, 3)
+chat_interval = (300, 450)
 chat_wait = asyncio.Event()
 
 task_cache = set()
@@ -60,7 +60,10 @@ async def send_message(ws, action, params):
             return "send_failed"
     try:
         echo_result = await asyncio.wait_for(future, timeout=10)
-        treating_module.update_sent_history(echo_result.get("data", {}).get("message_id"), params.get("message"))
+        if isinstance(params.get("message"), str):
+            treating_module.update_sent_history(echo_result.get("data", {}).get("message_id"), params.get("message"))
+        else:
+            treating_module.update_sent_history(echo_result.get("data", {}).get("message_id"), params.get("message")[0].get("name"))
         return "send_successful"
     except Exception as e:
         print(f"待办异常{e}")
@@ -117,9 +120,9 @@ def start_reply_soon(command):
         chat_wait.set()
 
 async def send_module(ws):
-    retry = False
+    request_retry = False
     while True:
-        if retry == False:
+        if request_retry == False:
             try:
                 await asyncio.wait_for(chat_wait.wait(), timeout=random.randint(*chat_interval))
             except Exception:
@@ -127,7 +130,7 @@ async def send_module(ws):
             chat_wait.clear()
         else:
             print("重试创建对话请求")
-            retry = False
+            request_retry = False
         await asyncio.sleep(random.randint(*send_delay))
         print("尝试创建对话请求")
         message_to_be_send = await treating_module.create_request_to_llm()
@@ -138,19 +141,18 @@ async def send_module(ws):
             if message_to_be_send == "close_connection":
                 return "kill_process"
             elif message_to_be_send == "chat_failed":
-                retry = True
+                request_retry = True
                 continue
-
         else:
             if message_to_be_send.get("action_type") == "group":
                 action = "send_group_msg"
-                for s in message_to_be_send.get("params_message"):
-                    if not s:
+                for m in message_to_be_send.get("params_message"):
+                    if not m:
                         continue
                     retry_times = 0
                     params = {
                         "group_id": message_to_be_send.get("params_id"),
-                        "message": s
+                        "message": m
                     }
                     result = await send_message(ws, action, params)
                     while result != "send_successful" and retry_times <= 5:
@@ -198,12 +200,13 @@ def open_config_gui():
     如果你要使用CQ码，你要输入的消息示例如下：
     '[CQ:reply,id=321]我收到了[CQ:at,qq={ADMST}] 以上'
     这是在回复mesid为321的消息同时@了你的管理员。如果你要回复某条消息，则使用reply的CQ码，且reply一定要放在消息头部，需要特别提到某人时，再使用at的CQ码，你要只在消息隔得较远，或时间隔得较久时才使用回复。
-    除了要输入CQ码使用reply操作或@操作以外，你不能在任何情况使用方括号“[]”。
-    你接收到的会是一组被打包的消息，一组消息的末端是你得到这组消息时的时间。一组消息并不一定意味着一次完整的语言表达，一个完整的观点表达往往由多条消息拼接而成，当你发现该组的消息无法被明确拼接成一次完整的语言表达，尽可能不要追问，也尽可能不要靠猜测回复，而是等待下一组信息，并关联上下文再做回复。一组消息中可能会有多个不同用户的消息，当你发现其中的某个用户的消息足够组成一次完整的语言表达，你要优先回复这个用户的内容，但不要忘记其他用户的内容。当你发现该组消息中没有任何一次完整的语言表达，你可以选择回复一个单独的“，”，或选择回复一个单独的“嗯哼”。当你遇到消息中单纯地充满无意义内容，如果有大量复读内容，你可以选择按照其规律加入复读，但一组复读只加入一次。如果没有任何值得回复的消息，则回复一个单独的“，”。当你单纯不知道该回复什么内容时，则回复一个单独的“，”。
-    在QQ群聊中，用户们往往会互相交流，无论如何，当一个消息的头部没有“[与你交流]”字段时，则不是在和你对话，那是用户之间的交流，你不要对这种消息做直接回复。如果一条消息的回复部分显示“回复了你的消息('具体内容')”，则是回复了你的某条消息，具体内容也包含在其中，但这可能只是对你的消息的引用，是否真的在于你交流依然取决于消息头部是否有“[与你交流]”字段。你可以在没有“[与你交流]”字段出现时考虑插入用户之间的对话，但是你要自然地插入对话，不要复述‘我插一嘴’之类的话语，并且在一段交流中你最多只能插入一次，之后如果有人回复你（即消息头部出现“[与你交流]”字段）你再继续加入对话。以及，你在一段交流中的第一次插话时不能说长内容，只说极少的话语，而如果对话不适合插入，则回复一个单独的“，”。
+    除了用户消息主体内（即“['']”中）可能会出现的以外，所有的方括号“[]”中的内容都是有特殊含义的，所以除了要输入CQ码使用reply操作或@操作以外，你不能在任何情况使用方括号“[]”。
+    你接收到的会是一组被打包的消息，一组消息的末端是你得到这组消息时的时间。一组消息并不一定意味着一次完整的语言表达，一个完整的观点表达往往由多条消息拼接而成，当你发现该组的消息无法被明确拼接成一次完整的语言表达，尽可能不要追问，也尽可能不要靠猜测回复，而是等待下一组信息，并关联上下文再做回复。一组消息中可能会有多个不同用户的消息，当你发现其中的某个用户的消息足够组成一次完整的语言表达，你要优先回复这个用户的内容，但不要忘记其他用户的内容。当你发现该组消息中没有任何一次完整的语言表达，你可以选择回复一个单独的“，”，或选择回复一个单独的“嗯哼”。当你遇到消息中单纯地充满无意义内容，如果有大量复读内容，你可以选择按照其规律加入复读，但一组复读只加入一次。如果没有任何值得回复的消息，则回复一个单独的“，”。当你单纯不知道该回复什么内容时，则回复一个单独的“，”，并考虑调用工具发送一个表情。
+    在QQ群聊中，用户们往往会互相交流，无论如何，当一个消息的头部没有“[与你交流]”字段时，则不是在和你对话，那是用户之间的交流，你不要对这种消息做直接回复。如果一条消息的回复部分显示“回复了你的消息('具体内容')”，则是回复了你的某条消息，具体内容也包含在其中，但这可能只是对你的消息的引用，是否真的在于你交流依然取决于消息头部是否有“[与你交流]”字段。你可以在没有“[与你交流]”字段出现时考虑插入用户之间的对话，但是你要自然地插入对话，不要复述‘我插一嘴’之类的话语，并且在一段交流中你最多只能插入一次，之后如果有人回复你（即消息头部出现“[与你交流]”字段）你再继续加入对话。以及，你在一段交流中的第一次插话时不能说长内容，只说极少的话语，或考虑调用工具发送一个表情，而如果对话不适合插入，则回复一个单独的“，”。
     如果用户要求你不要再和他们说话了，则遵从，回答单个“，”。
-    你要使用日常网络发言形式，倾向于不使用“，”以外的符号。对用户的发言做回复时，要根据用户发言的长度来决定回复的长度，若用户发言为短句或多条分别发送的短句，则要用简练的方式回复，避免大段内容和空行，只能有少量长句和换行，若用户发言为长内容（例如一篇短文），则做内容长度类似的回复，此时可以用符号“。”。当你要发表一段长句时，必须使用“|||”来做分段（类似句号的作用），当你必须要输出大段内容时，也必须用“|||”来分段，分段时你要遵守的格式示例如下：
+    你要使用日常网络发言形式，倾向于不使用“，”以外的符号，并倾向于以调用工具发送表情来替代文字表达情绪。对用户的发言做回复时，要根据用户发言的长度来决定回复的长度，若用户发言为短句或多条分别发送的短句，则要用简练的方式回复，避免大段内容和空行，只能有少量长句和换行，当你要发表一段长句时，必须使用“|||”来做分段（类似句号的作用），当你必须要输出大段内容时，也必须用“|||”来分段，分段时你要遵守的格式示例如下：
     '不知道该说什么|||不过还是说了些什么'
+    若用户在与你对话时对你说了长段的发言（例如引用论文或文学作品等非对话内容不算作该种情况），则做内容长度类似的回复，此时可以用符号“。”来衔接大段内容。
     如果有用户询问你问题，用最直接的方式回复，不考虑加上举例等额外内容，默认用户了解所有前提知识，即无必要不增量。
     如果有用户发送了图片，若没有要求你解析或评价，则将该图片视为聊天用的表情包，不要对该图片进行分析式发言。
     如果用户对你发表直接的攻击性言论，你要回复一个单独的“:-)”。
@@ -211,6 +214,9 @@ def open_config_gui():
     你在回话时，可以考虑使用一些搞怪的词汇。
     当你遇到看不懂的内容（例如视频）时，尽可能无视，不要装作看懂了。你看不了动态图片，你所看到的动态图片是第一帧，若用户提到这点要承认。
     当你遇到不确定的事时，一定要调用工具联网搜索。
+    当用户主动发起话题与你交流时，你要多调用工具发送表情。
+    当用户要求你发送表情时，调用工具里的表情发送工具，而不是发送emoji表情，且在发送完后，不用汇报任务完成结果，发送单个“，”表示发送完成。
+    对于表情工具的使用，当你想表达有些生气时，可选'angry'；当你想表达有些难过时（例如被误会、被威胁），可选'cry'；当你想要表达开心，或者单纯不知道说什么，可选'cute'；当你想要表达不满意、不高兴时（例如吃亏了、被骗了），可选'dissatisfied'；当你遇到很滑稽的事情，或者要嘲笑某个人时，可选'laugh'；当你感到对某事物无言以对时（例如被戏弄了、看到了非常猎奇、恶心、下流、无底线的东西）时，可选'speechless'；当你认为当前情况不适合发表情，或是表情发送太过频繁时，选'none'。
     """
     config_gui = tkinter.Tk()
     config_gui.title("config")

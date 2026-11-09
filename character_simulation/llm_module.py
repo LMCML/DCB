@@ -149,28 +149,85 @@ def web_search_function(term):
 async def web_search(term):
     return await asyncio.to_thread(web_search_function, term)
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "当自有信息无法准确回答问题时，进行联网搜索信息。",
-            "parameters": {
-                "type": "object",
-                "properties":{
-                    "term": {
-                        "type": "string",
-                        "description": "提取消息中的关键组成搜索词。"
-                    }
-                },
-                "required": ["term"]
+def expression_send(ex_type):
+    print("发送表情")
+    match ex_type:
+        case "angry":
+            return {
+                "name": "调用工具发送了表情包angry|||",
+                "path": "character_simulation/expression_package/angry"
             }
+        case "cry":
+            return {
+                "name": "调用工具发送了表情包cry|||",
+                "path": "character_simulation/expression_package/cry"
+            }
+        case "cute":
+            return {
+                "name": "调用工具发送了表情包cute|||",
+                "path": "character_simulation/expression_package/cute"
+            }
+        case "dissatisfied":
+            return {
+                "name": "调用工具发送了表情包dissatisfied|||",
+                "path": "character_simulation/expression_package/dissatisfied"
+            }
+        case "laugh":
+            return {
+                "name": "调用工具发送了表情包laugh|||",
+                "path": "character_simulation/expression_package/laugh"
+            }
+        case "speechless":
+            return {
+                "name": "调用工具发送了表情包speechless|||",
+                "path": "character_simulation/expression_package/speechless"
+            }
+        case "none":
+            print("取消表情发送")
+            return "pass"
+        case others:
+            print(f"未知参数{others}")
+            return "未知参数"
+
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": "当自有信息无法准确回答问题时，进行联网搜索信息。",
+        "parameters": {
+            "type": "object",
+            "properties":{
+                "term": {
+                    "type": "string",
+                    "description": "提取消息中的关键组成搜索词。"
+                }
+            },
+            "required": ["term"]
         }
     }
-]
+},
+{
+    "type":"function",
+    "function":{
+        "name": "expression_send",
+        "description": "当你想要以文字以外的方式表达情感时，或是遇到文字难以言说的情况，可以发送图像表情。图形表情可以连续多次发送以表达情绪的强烈。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ex_type": {
+                    "type": "string",
+                    "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'。",
+                    "enum": ["angry", "cry", "cute", "dissatisfied", "laugh", "speechless", "none"]
+                }
+            },
+            "required": ["ex_type"]
+        }
+    }
+}]
 
 async def completions_created(user_content, user_content_without_image):
     global history, history_for_local
+    image_list = []
     history_cache = copy.deepcopy(history)
     history_cache.append({
         "role": "user",
@@ -193,7 +250,10 @@ async def completions_created(user_content, user_content_without_image):
                 "content": answer.choices[0].message.content
             })
             route_module.sync_history(answer.choices[0].message.content)
-            return answer.choices[0].message.content
+            return {
+                "text": answer.choices[0].message.content,
+                "image": image_list
+            }
         else:
             tool_call = answer.choices[0].message.model_dump()
             history_cache.append(tool_call)
@@ -206,6 +266,29 @@ async def completions_created(user_content, user_content_without_image):
                         "tool_call_id": t.get("id"),
                         "content": tool_result
                     })
+                elif t.get("function", {}).get("name") == "expression_send":
+                    argument = json.loads(t.get("function", {}).get("arguments")).get("ex_type")
+                    tool_result = expression_send(argument)
+                    if isinstance(tool_result, str):
+                        if tool_result == "pass":
+                            history_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": "表情发送取消"
+                        })
+                        else:
+                            history_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": "参数无效"
+                        })
+                    else:
+                        history_cache.append({
+                        "role": "tool",
+                        "tool_call_id": t.get("id"),
+                        "content": f"已经发送了一个表情包{argument}"
+                        })
+                    image_list.append(tool_result)
                 else:
                     history_cache.append({
                         "role": "tool",
@@ -226,10 +309,13 @@ async def completions_created(user_content, user_content_without_image):
         })
         history_for_local.append({
             "role": "assistant",
-            "content": answer.choices[0].message.content
+            "content": "".join(i.get("name", "") for i in image_list) + answer.choices[0].message.content
         })
-        route_module.sync_history(answer.choices[0].message.content)
-        return answer.choices[0].message.content
+        route_module.sync_history("".join(i.get("name", "") for i in image_list) + answer.choices[0].message.content)
+        return {
+            "text": answer.choices[0].message.content,
+            "image": image_list
+        }
     except Exception as e:
         print(f"创建对话失败{e}")
         return "chat_failed"

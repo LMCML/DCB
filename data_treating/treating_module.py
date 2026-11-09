@@ -143,6 +143,13 @@ def pack_messages(m_list):
     # print(message_packed)
     return message_packed
 
+def local_image_to_base64_function(img_path):
+    with open(img_path, "rb") as i:
+        img_b64 = base64.b64encode(i.read()).decode("utf-8")
+        return img_b64
+async def local_image_to_base64(img_path):
+    return await asyncio.to_thread(local_image_to_base64_function, img_path)
+
 async def create_request_to_llm():
     global message_list_cache, retry_times
     async with request_lock:
@@ -168,25 +175,32 @@ async def create_request_to_llm():
                 i["text"] = "这里曾是一张图片"
         assistant_message = await llm_module.completions_created(user_message, user_message_without_image)
 
-        if assistant_message == "chat_failed":
-            if retry_times <= 5:
-                retry_times += 1
-                return "chat_failed"
-            else:
-                print("对话失败次数过多，关闭连接")
-                return "close_connection"
-        elif assistant_message.strip() in STANDBY_COMMAND:
-            message_list_cache.clear()
-            retry_times = 0
-            print("对话待机")
-            return
+        if isinstance(assistant_message, str):
+            if assistant_message == "chat_failed":
+                if retry_times <= 5:
+                    retry_times += 1
+                    return "chat_failed"
+                else:
+                    print("对话失败次数过多，关闭连接")
+                    return "close_connection"
         else:
             # print(assistant_message)  
             message_list_cache.clear()
             retry_times = 0
-            assistant_message_sentences = assistant_message.replace("\n\n", "|||").split("|||")
+            if assistant_message.get("text").strip() in STANDBY_COMMAND:
+                assistant_message["text"] = ""
+                print("对话待机指令")
+            assistant_message_text = assistant_message.get("text").replace("\n\n", "|||").split("|||")
+            assistant_message_image = []
+            for i in assistant_message.get("image"):
+                img_b64 = await local_image_to_base64(i.get("path"))
+                assistant_message_image.append([{
+                    "type": "image",
+                    "data": {"file": f"base64://{img_b64}"},
+                    "name": i.get("name")
+                }])
             result = {
-                "params_message": assistant_message_sentences,
+                "params_message": [*assistant_message_image, *assistant_message_text],
                 "params_id": TARGET_ID,
                 "action_type": TARGET_TYPE
             }
