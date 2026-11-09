@@ -150,7 +150,7 @@ async def web_search(term):
     return await asyncio.to_thread(web_search_function, term)
 
 def expression_send(ex_type):
-    print("发送表情")
+    print("调用表情工具")
     match ex_type:
         case "angry":
             return {
@@ -183,7 +183,7 @@ def expression_send(ex_type):
                 "path": "character_simulation/expression_package/speechless"
             }
         case "none":
-            print("取消表情发送")
+            print("取消表情工具调用")
             return "pass"
         case others:
             print(f"未知参数{others}")
@@ -288,7 +288,7 @@ async def completions_created(user_content, user_content_without_image):
                         "tool_call_id": t.get("id"),
                         "content": f"已经发送了一个表情包{argument}"
                         })
-                    image_list.append(tool_result)
+                        image_list.append(tool_result)
                 else:
                     history_cache.append({
                         "role": "tool",
