@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 from pathlib import Path
 from openai import AsyncOpenAI
+from loguru import logger
 
 from data_treating import route_module
 
@@ -76,10 +77,10 @@ def load_memory():
             with open(memory_path, "r", encoding="utf-8") as m:
                 history = json.load(m)
                 history_for_local = list(history)
-                print("记忆文件读取成功")
+                logger.info("记忆文件读取成功")
                 return "load_successful"
         except Exception as e:
-            print(f"读取记忆文件失败{e}")
+            logger.error(f"读取记忆文件失败{e}")
             return "load_failed"
     else:
         history = [{
@@ -90,10 +91,10 @@ def load_memory():
         try:
             with open(memory_path, "w", encoding="utf-8") as m:
                 json.dump(history_for_local, m, ensure_ascii=False, indent=2)
-                print("记忆文件创建成功")
+                logger.info("记忆文件创建成功")
                 return "create_successful"
         except Exception as e:
-            print(f"创建记忆文件失败{e}")
+            logger.error(f"创建记忆文件失败{e}")
             return "create_failed"
 
 def save_memory_function(history):
@@ -104,19 +105,19 @@ def save_memory_function(history):
         try:
             memory_path.copy(memory_backup_path)
         except Exception as e:
-            print(f"复制备份失败{e}")
+            logger.error(f"复制备份失败{e}")
     try:
         content_saved = json.dumps(history, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"记忆内容序列化失败{e}")
+        logger.error(f"记忆内容序列化失败{e}")
         return
     try:
         memory_tmp = memory_path.with_name(f"{NAME}.tmp")
         memory_tmp.write_text(content_saved, encoding="utf-8")
         memory_tmp.replace(memory_path)
-        print("已存档")
+        logger.info("已存档")
     except Exception as e:
-        print(f"记忆内容保存失败{e}")
+        logger.error(f"记忆内容保存失败{e}")
 async def save_memory():
     history_cache = copy.deepcopy(history_for_local)
     async with save_lock:
@@ -124,7 +125,7 @@ async def save_memory():
 
 def web_search_function(term):
     try:
-        print("尝试创建搜索请求")
+        logger.info("尝试创建搜索请求")
         ans = requests.post(
             "https://api.deepseek.com/v1/tools/search",
             headers={"Authorization": f"Bearer {KEY}"},
@@ -135,22 +136,21 @@ def web_search_function(term):
             timeout=30
         )
     except Exception as e:
-        print(f"搜索请求错误{e}")
+        logger.error(f"搜索请求错误{e}")
         return "搜索请求错误"
     if ans.status_code == 200:
-        print("完成搜索")
         result = ans.json()["results"]
         if not result:
             return "搜索无结果"
         return "\n\n".join(f"[{r.get('title')}]{r.get('summary')}" for r in result)
     else:
-        print("搜索失败")
+        logger.error("搜索失败")
         return "搜索失败"
 async def web_search(term):
     return await asyncio.to_thread(web_search_function, term)
 
 def expression_send(ex_type):
-    print("调用表情工具")
+    logger.info("调用表情工具")
     match ex_type:
         case "angry":
             return {
@@ -183,10 +183,10 @@ def expression_send(ex_type):
                 "path": "character_simulation/expression_package/speechless"
             }
         case "none":
-            print("取消表情工具调用")
+            logger.info("取消表情工具调用")
             return "pass"
         case others:
-            print(f"未知参数{others}")
+            logger.error(f"未知参数{others}")
             return "未知参数"
 
 tools = [{
@@ -233,6 +233,11 @@ async def completions_created(user_content, user_content_without_image):
         "role": "user",
         "content": user_content
     })
+    history_for_local_cache = copy.deepcopy(history_for_local)
+    history_for_local_cache.append({
+        "role": "user",
+        "content": user_content_without_image
+    })
     try:
         answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, tools=tools, timeout=30), timeout=60)
         if not answer.choices[0].message.tool_calls:
@@ -241,14 +246,11 @@ async def completions_created(user_content, user_content_without_image):
                 "content": answer.choices[0].message.content
             })
             history = copy.deepcopy(history_cache)
-            history_for_local.append({
-                "role": "user",
-                "content": user_content_without_image
-            })
-            history_for_local.append({
+            history_for_local_cache.append({
                 "role": "assistant",
                 "content": answer.choices[0].message.content
             })
+            history_for_local = copy.deepcopy(history_for_local_cache)
             route_module.sync_history(answer.choices[0].message.content)
             return {
                 "text": answer.choices[0].message.content,
@@ -257,11 +259,17 @@ async def completions_created(user_content, user_content_without_image):
         else:
             tool_call = answer.choices[0].message.model_dump()
             history_cache.append(tool_call)
+            history_for_local_cache.append(tool_call)
             for t in tool_call.get("tool_calls"):
                 if t.get("function", {}).get("name") == "web_search":
                     argument = json.loads(t.get("function", {}).get("arguments")).get("term")
                     tool_result = await web_search(argument)
                     history_cache.append({
+                        "role": "tool",
+                        "tool_call_id": t.get("id"),
+                        "content": tool_result
+                    })
+                    history_for_local_cache.append({
                         "role": "tool",
                         "tool_call_id": t.get("id"),
                         "content": tool_result
@@ -272,21 +280,36 @@ async def completions_created(user_content, user_content_without_image):
                     if isinstance(tool_result, str):
                         if tool_result == "pass":
                             history_cache.append({
-                            "role": "tool",
-                            "tool_call_id": t.get("id"),
-                            "content": "表情发送取消"
-                        })
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": "表情发送取消"
+                            })
+                            history_for_local_cache.append({
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": "表情发送取消"
+                            })
                         else:
                             history_cache.append({
-                            "role": "tool",
-                            "tool_call_id": t.get("id"),
-                            "content": "参数无效"
-                        })
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": "参数无效"
+                            })
+                            history_for_local_cache.append({
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": "参数无效"
+                            })
                     else:
                         history_cache.append({
-                        "role": "tool",
-                        "tool_call_id": t.get("id"),
-                        "content": f"已经发送了一个表情包{argument}"
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": f"已经发送了一个表情包{argument}"
+                        })
+                        history_for_local_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": f"已经发送了一个表情包{argument}"
                         })
                         image_list.append(tool_result)
                 else:
@@ -295,7 +318,12 @@ async def completions_created(user_content, user_content_without_image):
                         "tool_call_id": t.get("id"),
                         "content": "unknown_tool"
                     })
-                    print("出现未知方法调用")
+                    history_for_local_cache.append({
+                        "role": "tool",
+                        "tool_call_id": t.get("id"),
+                        "content": "unknown_tool"
+                    })
+                    logger.error("出现未知方法调用")
         
         answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, timeout=30), timeout=30)
         history_cache.append({
@@ -303,19 +331,16 @@ async def completions_created(user_content, user_content_without_image):
             "content": answer.choices[0].message.content
         })
         history = copy.deepcopy(history_cache)
-        history_for_local.append({
-            "role": "user",
-            "content": user_content_without_image
-        })
-        history_for_local.append({
+        history_for_local_cache.append({
             "role": "assistant",
-            "content": "".join(i.get("name", "") for i in image_list) + answer.choices[0].message.content
+            "content": answer.choices[0].message.content
         })
+        history_for_local = copy.deepcopy(history_for_local_cache)
         route_module.sync_history("".join(i.get("name", "") for i in image_list) + answer.choices[0].message.content)
         return {
             "text": answer.choices[0].message.content,
             "image": image_list
         }
     except Exception as e:
-        print(f"创建对话失败{e}")
+        logger.error(f"创建对话失败{e}")
         return "chat_failed"

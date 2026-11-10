@@ -1,2 +1,3 @@
 *.env
-character_simulation/memories/*.json
+logs/*
+character_simulation/memories/*

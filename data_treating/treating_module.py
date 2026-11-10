@@ -4,6 +4,7 @@ from collections import deque
 import base64
 from datetime import datetime
 import requests
+from loguru import logger
 
 from data_treating import face_dictionary, route_module
 from character_simulation import llm_module
@@ -70,7 +71,7 @@ def treating_new_mes_function(mes):
                     "type": "text",
                     "text": message_combined
                 }
-            print(f"接收消息{a_total_message.get("text")}")
+            logger.info(f"接收消息{a_total_message.get("text")}")
             message_list.append(a_total_message)
 
             for m in mes.get("message"):
@@ -89,18 +90,18 @@ def treating_new_mes_function(mes):
                                     "type": "image_url",
                                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
                                 }
-                            print("接收图片过大报错占位符")
+                            logger.info("接收图片过大报错占位符")
                             message_list.append(a_total_message)
                             continue
                         except Exception as e:
-                            print(f"接收图片过大报错占位符失败{e}")
+                            logger.error(f"接收图片过大报错占位符失败{e}")
                             continue
                     request_times = 0
                     while request_times <= 5:
                         try:
                             img = requests.get(m.get("data", {}).get("url"), timeout=10)
                         except Exception as e:
-                            print(f"图片下载失败{e}")
+                            logger.error(f"图片下载失败{e}")
                             request_times += 1
                             continue
                         if img.status_code == 200:
@@ -115,18 +116,18 @@ def treating_new_mes_function(mes):
                                     "type": "image_url",
                                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
                                 }
-                            print("接收图片下载失败报错占位符")
+                            logger.info("接收图片下载失败报错占位符")
                             message_list.append(a_total_message)
                             continue
                         except Exception as e:
-                            print(f"接收图片下载失败报错占位符失败{e}")
+                            logger.error(f"接收图片下载失败报错占位符失败{e}")
                             continue
                     img_b64 = base64.b64encode(img.content).decode("utf-8")
                     a_total_message = {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/{img_format};base64,{img_b64}"}
                     }
-                    print(f"接收图片{img_format}")
+                    logger.info(f"接收图片{img_format}")
                     message_list.append(a_total_message)
     return reply_soon
 async def treating_new_mes(mes):
@@ -157,7 +158,7 @@ async def create_request_to_llm():
             user_message = pack_messages(message_list_cache)
         else:
             if not message_list:
-                print("无可对话消息")
+                logger.info("无可对话消息")
                 return
             message_list_cache = copy.deepcopy(message_list)
             user_message = pack_messages(message_list)
@@ -165,7 +166,7 @@ async def create_request_to_llm():
             if not user_message:
                 return
 
-        print("对话请求创建")
+        logger.info("对话请求创建")
         # print(user_message)
         user_message_without_image = copy.deepcopy(user_message)
         for i in user_message_without_image:
@@ -181,7 +182,7 @@ async def create_request_to_llm():
                     retry_times += 1
                     return "chat_failed"
                 else:
-                    print("对话失败次数过多，关闭连接")
+                    logger.error("对话失败次数过多，关闭连接")
                     return "close_connection"
         else:
             # print(assistant_message)  
@@ -189,7 +190,7 @@ async def create_request_to_llm():
             retry_times = 0
             if assistant_message.get("text").strip() in STANDBY_COMMAND:
                 assistant_message["text"] = ""
-                print("对话待机指令")
+                logger.info("对话待机指令")
             assistant_message_text = assistant_message.get("text").replace("\n\n", "|||").split("|||")
             assistant_message_image = []
             for i in assistant_message.get("image"):

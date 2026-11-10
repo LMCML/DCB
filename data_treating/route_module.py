@@ -2,6 +2,7 @@ import json
 import asyncio
 from datetime import datetime
 from openai import OpenAI
+from loguru import logger
 # from llama_cpp import Llama
 
 from character_simulation import llm_module
@@ -104,14 +105,14 @@ def communicatee_route(user_content):
         })
         history = list(history_cache)
     except Exception as e:
-        print(f"交流对象路由请求失败{e}")
+        logger.error(f"交流对象路由请求失败{e}")
         return False
 
     try:
         route_result = list(json.loads(answer.choices[0].message.content.replace("True", "true").replace("False", "false")).values())[0]
         return route_result
     except Exception as e:
-        print(f"交流对象路由结果无效{e}")
+        logger.error(f"交流对象路由结果无效{e}")
         return False
 
 def sync_history(bot_content):

@@ -10,6 +10,7 @@ import tkinter
 from dotenv import set_key, load_dotenv
 import websockets
 from websockets.exceptions import ConnectionClosed
+from loguru import logger
 
 from data_treating import treating_module, route_module
 from character_simulation import llm_module
@@ -35,6 +36,10 @@ task_cache = set()
 pending_future = {}
 send_lock = asyncio.Lock()
 
+log_path = Path("logs/console.log")
+log_path.parent.mkdir(parents=True, exist_ok=True)
+logger.add(log_path, rotation="5 MB")
+
 def clear_future():
     for e in list(pending_future.keys()):
         future = pending_future.pop(e, None)
@@ -46,7 +51,7 @@ async def send_message(ws, action, params):
     future = asyncio.get_running_loop().create_future()
     pending_future[echo] = future
     async with send_lock:
-        print("进行消息发送")
+        logger.info("进行消息发送")
         await asyncio.sleep(random.randint(*send_interval))
         try:
             await ws.send(json.dumps({
@@ -55,7 +60,7 @@ async def send_message(ws, action, params):
                 "echo": echo
             }))
         except Exception as e:
-            print(f"发送失败{e}")
+            logger.error(f"发送失败{e}")
             pending_future.pop(echo, None)
             return "send_failed"
     try:
@@ -66,7 +71,7 @@ async def send_message(ws, action, params):
             treating_module.update_sent_history(echo_result.get("data", {}).get("message_id"), params.get("message")[0].get("name"))
         return "send_successful"
     except Exception as e:
-        print(f"待办异常{e}")
+        logger.error(f"待办异常{e}")
         return "send_failed"
     finally:
         pending_future.pop(echo, None)
@@ -76,18 +81,18 @@ async def receive_module(ws):
         try:
             new_mes = await asyncio.wait_for(ws.recv(), timeout=60)
         except asyncio.TimeoutError as e:
-            print(f"接收超时，主动断连{e}")
+            logger.error(f"消息接收超时，主动断连{e}")
             clear_future()
             return("time_out")
         except Exception as e:
-            print(f"接收异常{e}")
+            logger.error(f"消息接收异常{e}")
             clear_future()
             return("connect_failed")
 
         try:
             mes_content = json.loads(new_mes)
         except JSONDecodeError as e:
-            print(f"非法JSON{e}")
+            logger.error(f"非法JSON{e}")
             continue
         # print(mes_content)
 
@@ -101,14 +106,18 @@ async def receive_module(ws):
             
         if mes_content.get("sender", {}).get("user_id") == ADMST:
             if mes_content.get("raw_message") == "/自杀" or mes_content.get("raw_message") == "`zs":
-                print("收到关闭指令，主动断连")
+                logger.info("收到关闭指令，主动断连")
                 clear_future()
                 return ("kill_process")
             if mes_content.get("raw_message") == "/存档" or mes_content.get("raw_message") == "`cd":
-                print("收到存档指令，进行存档")
+                logger.info("收到存档指令，进行存档")
                 task_save = asyncio.create_task(llm_module.save_memory())
                 task_cache.add(task_save)
                 task_save.add_done_callback(task_cache.discard)
+                continue
+            if mes_content.get("raw_message") == "/回复" or mes_content.get("raw_message") == "`hf":
+                logger.info("收到回复指令，立即回复")
+                start_reply_soon(True)
                 continue
         
         task_treat = asyncio.create_task(treating_module.treating_new_mes(mes_content))
@@ -129,10 +138,10 @@ async def send_module(ws):
                 pass
             chat_wait.clear()
         else:
-            print("重试创建对话请求")
+            logger.info("重试创建对话请求")
             request_retry = False
         await asyncio.sleep(random.randint(*send_delay))
-        print("尝试创建对话请求")
+        logger.info("尝试创建对话请求")
         message_to_be_send = await treating_module.create_request_to_llm()
 
         if not message_to_be_send:
@@ -159,7 +168,7 @@ async def send_module(ws):
                         retry_times += 1
                         result = await send_message(ws, action, params)
                     if retry_times > 5:
-                        print("发送失败次数过多，关闭连接")
+                        logger.error("发送失败次数过多，关闭连接")
                         return "kill_process"
 
 async def connect_to_qq():
@@ -168,7 +177,7 @@ async def connect_to_qq():
         if ACCESS_TOKEN:
             url = f"{WS_URL}/?{urlencode({'access_token': ACCESS_TOKEN})}"
         async with websockets.connect(url, ping_interval=60, ping_timeout=30) as ws:
-            print(f"连接至{WS_URL}")
+            logger.info(f"连接至{WS_URL}")
             task_receive_module = asyncio.create_task(receive_module(ws))
             task_send_module = asyncio.create_task(send_module(ws))
             done_task, pending_task = await asyncio.wait([task_receive_module, task_send_module], return_when=asyncio.FIRST_COMPLETED)
@@ -176,16 +185,16 @@ async def connect_to_qq():
                 t.cancel()
             for t in done_task:
                 if t.exception():
-                    print(f"协程抛错{t}")
+                    logger.error(f"协程抛错{t}")
                     return "kill_process"
                 else:
                     return t.result()
     except ConnectionClosed as e:
-        print(f"心跳超时{e}")
+        logger.error(f"心跳超时{e}")
         clear_future()
         return("time_out")
     except Exception as e:
-        print(f"连接失败{e}")
+        logger.error(f"连接失败{e}")
         return("connect_failed") 
 
 config_result = False
@@ -200,7 +209,7 @@ def open_config_gui():
     如果你要使用CQ码，你要输入的消息示例如下：
     '[CQ:reply,id=321]我收到了[CQ:at,qq={ADMST}] 以上'
     这是在回复mesid为321的消息同时@了你的管理员。如果你要回复某条消息，则使用reply的CQ码，且reply一定要放在消息头部，需要特别提到某人时，再使用at的CQ码，你要只在消息隔得较远，或时间隔得较久时才使用回复。
-    除了用户消息主体内（即“['']”中）可能会出现的以外，所有的方括号“[]”中的内容都是有特殊含义的，所以除了要输入CQ码使用reply操作或@操作以外，你不能在任何情况使用方括号“[]”。
+    除了用户消息主体内（即“['']”中）可能会出现的以外，所有的方括号“[]”中的内容都是有特殊含义的，所以除了要输入CQ码使用reply操作或@操作以外，你不能在任何情况使用方括号“[]”，除了使用CQ码以外，也不存在任何其他的“口令消息”，特殊操作需要工具调用。
     你接收到的会是一组被打包的消息，一组消息的末端是你得到这组消息时的时间。一组消息并不一定意味着一次完整的语言表达，一个完整的观点表达往往由多条消息拼接而成，当你发现该组的消息无法被明确拼接成一次完整的语言表达，尽可能不要追问，也尽可能不要靠猜测回复，而是等待下一组信息，并关联上下文再做回复。一组消息中可能会有多个不同用户的消息，当你发现其中的某个用户的消息足够组成一次完整的语言表达，你要优先回复这个用户的内容，但不要忘记其他用户的内容。当你发现该组消息中没有任何一次完整的语言表达，你可以选择回复一个单独的“，”，或选择回复一个单独的“嗯哼”。当你遇到消息中单纯地充满无意义内容，如果有有规律的复读或排比内容，你可以选择按照其规律加入其中，但一组复读只加入一次。如果没有任何值得回复的消息，则回复一个单独的“，”。当你单纯不知道该回复什么内容时，则回复一个单独的“，”，并考虑调用工具发送一个表情。
     在QQ群聊中，用户们往往会互相交流，无论如何，当一个消息的头部没有“[与你交流]”字段时，则不是在和你对话，那是用户之间的交流，你不要对这种消息做直接回复。如果一条消息的回复部分显示“回复了你的消息('具体内容')”，则是回复了你的某条消息，具体内容也包含在其中，但这可能只是对你的消息的引用，是否真的在于你交流依然取决于消息头部是否有“[与你交流]”字段。你可以在没有“[与你交流]”字段出现时考虑插入用户之间的对话，但是你要自然地插入对话，不要复述‘我插一嘴’之类的话语，并且在一段交流中你最多只能插入一次，之后如果有人回复你（即消息头部出现“[与你交流]”字段）你再继续加入对话。以及，你在一段交流中的第一次插话时不能说长内容，只说极少的话语，或考虑调用工具发送一个表情，而如果对话不适合插入，则回复一个单独的“，”。
     如果用户要求你不要再和他们说话了，则遵从，回答单个“，”。
@@ -329,7 +338,7 @@ def open_config_gui():
 
     blank_line = tkinter.Frame(config_gui_mainbody)
     blank_line.grid(row=15, column=0, rowspan=5, sticky="nsew")
-    reminder = tkinter.Label(blank_line, text="若要改动已有历史记录的system提示词，需先删除相应历史记录（根据存档名字），或直接编辑历史记录文件内容。\n输出单个“，”或“,”被视作对话待机", font=('Consolas', 8))
+    reminder = tkinter.Label(blank_line, text="若要改动已有历史记录的system提示词，需先删除相应历史记录（根据存档名字），或直接编辑历史记录文件内容。\n输出单个“，”或“,”被视作对话待机，“|||”被视作分段符。", font=('Consolas', 8))
     reminder.pack(expand=True, anchor="s")
 
     text_zone = tkinter.Frame(config_gui_mainbody)
@@ -377,19 +386,19 @@ async def deploy_main():
                 try:
                     roc = await connect_to_qq()
                 except Exception as e:
-                    print(f"启动连接失败{e}")
+                    logger.error(f"启动连接失败{e}")
                     break
                 if roc == "time_out":
                     if reconnect_times <= 5:
-                        print("五秒后尝试重连")
+                        logger.info("五秒后尝试重连")
                         reconnect_times += 1
                         await asyncio.sleep(5)
                         continue
                     else:
-                        print("重连失败，关闭")
+                        logger.error("重连失败，关闭")
                         break
                 elif roc == "connect_failed" or roc == "kill_process":
-                    print("直接关闭程序")
+                    logger.info("直接关闭程序")
                     break
         finally:
             await llm_module.save_memory()
