@@ -70,8 +70,9 @@ def set_system_content(system_content):
 
 def load_memory():
     global history, history_for_local
-    memory_path = Path(f"character_simulation/memories/{NAME}.json")
+    memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
     memory_path.parent.mkdir(parents=True, exist_ok=True)
+    memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
     if memory_path.exists():
         try:
             with open(memory_path, "r", encoding="utf-8") as m:
@@ -83,24 +84,41 @@ def load_memory():
             logger.error(f"读取记忆文件失败{e}")
             return "load_failed"
     else:
-        history = [{
-            "role": "system",
-            "content": SYSTEM_CONTENT
-        }]
-        history_for_local = list(history)
-        try:
-            with open(memory_path, "w", encoding="utf-8") as m:
-                json.dump(history_for_local, m, ensure_ascii=False, indent=2)
-                logger.info("记忆文件创建成功")
-                return "create_successful"
-        except Exception as e:
-            logger.error(f"创建记忆文件失败{e}")
-            return "create_failed"
+        if not memory_compressed_path.exists():
+            history = [{
+                "role": "system",
+                "content": SYSTEM_CONTENT
+            }]
+            history_for_local = list(history)
+            try:
+                with open(memory_path, "w", encoding="utf-8") as m:
+                    json.dump(history_for_local, m, ensure_ascii=False, indent=2)
+                    logger.info("记忆文件创建成功")
+                    return "create_successful"
+            except Exception as e:
+                logger.error(f"创建记忆文件失败{e}")
+                return "create_failed"
+        else:
+            with open(memory_compressed_path, "r", encoding="utf-8") as m:
+                memory_compressed = m.read()
+            history = [{
+                "role": "system",
+                "content": SYSTEM_CONTENT + "\n\n---------\n以下为过往记忆：\n" + memory_compressed 
+            }]
+            history_for_local = list(history)
+            try:
+                with open(memory_path, "w", encoding="utf-8") as m:
+                    json.dump(history_for_local, m, ensure_ascii=False, indent=2)
+                    logger.info("记忆文件创建成功")
+                    return "create_successful"
+            except Exception as e:
+                logger.error(f"创建记忆文件失败{e}")
+                return "create_failed"
 
 def save_memory_function(history):
-    memory_path = Path(f"character_simulation/memories/{NAME}.json")
+    memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
     memory_path.parent.mkdir(parents=True, exist_ok=True)
-    memory_backup_path = Path(f"character_simulation/memories/{NAME}_backup.json")
+    memory_backup_path = Path(f"character_simulation/memories/{NAME}/{NAME}_backup.json")
     if memory_path.exists():
         try:
             memory_path.copy(memory_backup_path)
@@ -216,7 +234,7 @@ tools = [{
             "properties": {
                 "ex_type": {
                     "type": "string",
-                    "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'。",
+                    "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'，并以文本进行回复。",
                     "enum": ["angry", "cry", "cute", "dissatisfied", "laugh", "speechless", "none"]
                 }
             },
@@ -260,6 +278,7 @@ async def completions_created(user_content, user_content_without_image):
             tool_call = answer.choices[0].message.model_dump()
             history_cache.append(tool_call)
             history_for_local_cache.append(tool_call)
+            assistant_message_cache = ""
             for t in tool_call.get("tool_calls"):
                 if t.get("function", {}).get("name") == "web_search":
                     argument = json.loads(t.get("function", {}).get("arguments")).get("term")
@@ -272,7 +291,7 @@ async def completions_created(user_content, user_content_without_image):
                     history_for_local_cache.append({
                         "role": "tool",
                         "tool_call_id": t.get("id"),
-                        "content": tool_result
+                        "content": f"搜索了{argument}"
                     })
                 elif t.get("function", {}).get("name") == "expression_send":
                     argument = json.loads(t.get("function", {}).get("arguments")).get("ex_type")
@@ -289,6 +308,7 @@ async def completions_created(user_content, user_content_without_image):
                                 "tool_call_id": t.get("id"),
                                 "content": "表情发送取消"
                             })
+                            assistant_message_cache = tool_call.get("content")
                         else:
                             history_cache.append({
                                 "role": "tool",
@@ -324,7 +344,23 @@ async def completions_created(user_content, user_content_without_image):
                         "content": "unknown_tool"
                     })
                     logger.error("出现未知方法调用")
-        
+            if assistant_message_cache:
+                history_cache.append({
+                    "role": "assistant",
+                    "content": assistant_message_cache
+                })
+                history = copy.deepcopy(history_cache)
+                history_for_local_cache.append({
+                    "role": "assistant",
+                    "content": assistant_message_cache
+                })
+                history_for_local = copy.deepcopy(history_for_local_cache)
+                route_module.sync_history("".join(i.get("name", "") for i in image_list) + assistant_message_cache)
+                return {
+                    "text": assistant_message_cache,
+                    "image": image_list
+                }
+
         answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, timeout=30), timeout=30)
         history_cache.append({
             "role": "assistant",

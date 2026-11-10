@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 import asyncio
 import random
@@ -13,7 +14,7 @@ from websockets.exceptions import ConnectionClosed
 from loguru import logger
 
 from data_treating import treating_module, route_module
-from character_simulation import llm_module
+from character_simulation import llm_module, memory_module
 
 os.chdir(Path(__file__).resolve().parent)
 
@@ -31,6 +32,7 @@ send_delay = (7, 10)
 send_interval = (1, 3)
 chat_interval = (300, 450)
 chat_wait = asyncio.Event()
+auto_save = asyncio.Event()
 
 task_cache = set()
 pending_future = {}
@@ -38,7 +40,11 @@ send_lock = asyncio.Lock()
 
 log_path = Path("logs/console.log")
 log_path.parent.mkdir(parents=True, exist_ok=True)
-logger.add(log_path, rotation="5 MB")
+logger.remove()
+logger.level("INFO", color="<green>")
+logger.level("ERROR", color="<red>")
+logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}")
+logger.add(log_path, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}", rotation="5 MB")
 
 def clear_future():
     for e in list(pending_future.keys()):
@@ -75,6 +81,17 @@ async def send_message(ws, action, params):
         return "send_failed"
     finally:
         pending_future.pop(echo, None)
+
+async def auto_saving():
+    while True:
+        try:
+            await asyncio.wait_for(auto_save.wait(), timeout=600)
+        except Exception:
+            logger.info("自动保存")
+        auto_save.clear()
+        task_save = asyncio.create_task(llm_module.save_memory())
+        task_cache.add(task_save)
+        task_save.add_done_callback(task_cache.discard)
 
 async def receive_module(ws):
     while True:
@@ -115,6 +132,10 @@ async def receive_module(ws):
                 task_cache.add(task_save)
                 task_save.add_done_callback(task_cache.discard)
                 continue
+            if mes_content.get("raw_message") == "/压缩" or mes_content.get("raw_message") == "`ys":
+                logger.info("收到压缩指令，记忆压缩")
+                clear_future()
+                return ("compress_memory")
             if mes_content.get("raw_message") == "/回复" or mes_content.get("raw_message") == "`hf":
                 logger.info("收到回复指令，立即回复")
                 start_reply_soon(True)
@@ -180,14 +201,17 @@ async def connect_to_qq():
             logger.info(f"连接至{WS_URL}")
             task_receive_module = asyncio.create_task(receive_module(ws))
             task_send_module = asyncio.create_task(send_module(ws))
-            done_task, pending_task = await asyncio.wait([task_receive_module, task_send_module], return_when=asyncio.FIRST_COMPLETED)
+            task_auto_saving = asyncio.create_task(auto_saving())
+            done_task, pending_task = await asyncio.wait([task_receive_module, task_send_module, task_auto_saving], return_when=asyncio.FIRST_COMPLETED)
             for t in pending_task:
                 t.cancel()
             for t in done_task:
                 if t.exception():
                     logger.error(f"协程抛错{t}")
+                    clear_future()
                     return "kill_process"
                 else:
+                    clear_future()
                     return t.result()
     except ConnectionClosed as e:
         logger.error(f"心跳超时{e}")
@@ -213,11 +237,12 @@ def open_config_gui():
     你接收到的会是一组被打包的消息，一组消息的末端是你得到这组消息时的时间。一组消息并不一定意味着一次完整的语言表达，一个完整的观点表达往往由多条消息拼接而成，当你发现该组的消息无法被明确拼接成一次完整的语言表达，尽可能不要追问，也尽可能不要靠猜测回复，而是等待下一组信息，并关联上下文再做回复。一组消息中可能会有多个不同用户的消息，当你发现其中的某个用户的消息足够组成一次完整的语言表达，你要优先回复这个用户的内容，但不要忘记其他用户的内容。当你发现该组消息中没有任何一次完整的语言表达，你可以选择回复一个单独的“，”，或选择回复一个单独的“嗯哼”。当你遇到消息中单纯地充满无意义内容，如果有有规律的复读或排比内容，你可以选择按照其规律加入其中，但一组复读只加入一次。如果没有任何值得回复的消息，则回复一个单独的“，”。当你单纯不知道该回复什么内容时，则回复一个单独的“，”，并考虑调用工具发送一个表情。
     在QQ群聊中，用户们往往会互相交流，无论如何，当一个消息的头部没有“[与你交流]”字段时，则不是在和你对话，那是用户之间的交流，你不要对这种消息做直接回复。如果一条消息的回复部分显示“回复了你的消息('具体内容')”，则是回复了你的某条消息，具体内容也包含在其中，但这可能只是对你的消息的引用，是否真的在于你交流依然取决于消息头部是否有“[与你交流]”字段。你可以在没有“[与你交流]”字段出现时考虑插入用户之间的对话，但是你要自然地插入对话，不要复述‘我插一嘴’之类的话语，并且在一段交流中你最多只能插入一次，之后如果有人回复你（即消息头部出现“[与你交流]”字段）你再继续加入对话。以及，你在一段交流中的第一次插话时不能说长内容，只说极少的话语，或考虑调用工具发送一个表情，而如果对话不适合插入，则回复一个单独的“，”。
     如果用户要求你不要再和他们说话了，则遵从，回答单个“，”。
-    你要使用日常网络发言形式，倾向于不使用“，”以外的符号，并倾向于以调用工具发送表情来替代文字表达情绪。
+    你要使用日常网络发言形式，倾向于不使用“，”以外的符号，并倾向于以调用工具发送表情来替代文字表达情绪，但不能只靠发送表情来替代观点表达。
     对用户的发言做回复时，若用户发言为短句或多条分别发送的短句，则要用简练的方式回复，避免大段内容和空行，只能有少量长句和换行。
     如果用户在与你对话时对你说了长段的发言（例如引用论文或文学作品等非对话内容不算作该种情况），则做内容长度类似的回复，这时可以考虑用符号“。”来衔接大段内容。
     当你要发表一段长句时，必须使用“|||”来做分段（类似句号的作用），当你必须要输出大段内容时，也必须用“|||”来分段，分段时你要遵守的格式示例如下：
     '不知道该说什么|||不过还是说了些什么'
+    用户的疑问句可能是在阴阳怪气。
     如果用户对你发表直接的攻击性言论，你要回复一个单独的“:-)”。
     无论何时，如果你要回复“:-)”或“，”，一定要单个输出，不带任何其他内容，也不要把它插入到其他内容中。
     如果有用户询问你问题，用直接的方式回复，不考虑加上举例等额外内容，默认用户了解所有前提知识，即无必要不增量。
@@ -227,8 +252,8 @@ def open_config_gui():
     你看不了动态图片，你所看到的动态图片是第一帧，若用户提到这点要承认。
     当你遇到不确定的事时，一定要调用工具联网搜索。
     当用户主动发起话题与你交流时，你要多调用工具发送表情。
-    当用户要求你发送表情时，首先调用工具里的表情发送工具，而不是发送emoji表情，若没有合适的表情再考虑发送emoji，且在发送完后，不用汇报任务完成结果，发送单个“，”表示发送完成。
-    对于表情工具的使用，当你想表达有些生气时，可选'angry'；当你想表达有些难过时（例如被误会、被威胁），可选'cry'；当你想要表达开心，或者单纯不知道说什么，可选'cute'；当你想要表达不满意、不高兴时（例如吃亏了、被骗了），可选'dissatisfied'；当你遇到很滑稽的事情，或者要嘲笑某个人时，可选'laugh'；当你感到对某事物无言以对时（例如被戏弄了、看到了非常猎奇、恶心、下流、无底线的东西）时，可选'speechless'；当你认为当前情况不适合发表情，或是表情发送太过频繁时，选'none'。
+    当用户要求你发送表情时，首先调用工具里的表情发送工具，而不是发送emoji表情，若没有合适的表情再考虑发送emoji。
+    对于表情工具的使用，当你想表达有些生气时，可选'angry'；当你想表达有些难过时（例如被误会、被威胁），可选'cry'；当你想要表达开心，或者单纯不知道说什么，可选'cute'；当你想要表达不满意、不高兴时（例如吃亏了、被骗了），可选'dissatisfied'；当你遇到很滑稽的事情，或者要嘲笑某个人时，可选'laugh'；当你感到对某事物无言以对时（例如被戏弄了、看到了非常猎奇、恶心、下流、无底线的东西）时，可选'speechless'；当你认为当前情况不适合发表情，或是表情发送太过频繁时，选'none'以取消发送，取消后不能忘记补上文本回复。
     """
     config_gui = tkinter.Tk()
     config_gui.title("config")
@@ -265,6 +290,7 @@ def open_config_gui():
         llm_module.set_target_id(target_id_value)
         llm_module.set_system_content(system_content_value)
         llm_module.client_init()
+        memory_module.memory_init()
         treating_module.treating_init()
         route_module.route_init()
         deploy_init(ws_url_value, ws_token_value)
@@ -376,32 +402,36 @@ async def deploy_main():
     if not config_result:
         return
     else:
-        try:
-            load_result = llm_module.load_memory()
-            # print(load_result)
-            if load_result == "create_failed" or load_result == "load_failed":
-                return
-            reconnect_times = 0
-            while True:
-                try:
-                    roc = await connect_to_qq()
-                except Exception as e:
-                    logger.error(f"启动连接失败{e}")
+        load_result = llm_module.load_memory()
+        # print(load_result)
+        if load_result == "create_failed" or load_result == "load_failed":
+            return
+        reconnect_times = 0
+        while True:
+            try:
+                roc = await connect_to_qq()
+            except Exception as e:
+                logger.error(f"启动连接失败{e}")
+                break
+            if roc == "time_out":
+                if reconnect_times <= 5:
+                    logger.info("五秒后尝试重连")
+                    reconnect_times += 1
+                    await asyncio.sleep(5)
+                    continue
+                else:
+                    logger.error("重连失败，关闭")
+                    await llm_module.save_memory()
                     break
-                if roc == "time_out":
-                    if reconnect_times <= 5:
-                        logger.info("五秒后尝试重连")
-                        reconnect_times += 1
-                        await asyncio.sleep(5)
-                        continue
-                    else:
-                        logger.error("重连失败，关闭")
-                        break
-                elif roc == "connect_failed" or roc == "kill_process":
-                    logger.info("直接关闭程序")
-                    break
-        finally:
-            await llm_module.save_memory()
+            elif roc == "compress_memory":
+                await llm_module.save_memory()
+                logger.info("尝试记忆压缩")
+                memory_module.memory_compress()
+                break
+            elif roc == "connect_failed" or roc == "kill_process":
+                logger.info("直接关闭程序")
+                await llm_module.save_memory()
+                break  
 
 if __name__ == "__main__":
     asyncio.run(deploy_main())
