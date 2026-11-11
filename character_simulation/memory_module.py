@@ -20,7 +20,7 @@ memory_path = None
 memory_compressed_path = None
 
 def memory_init():
-    global KEY, NAME, ADMST, BOT_NICKNAME, TARGET_ID, SYSTEM_CONTENT, client, processing, memory_path, memory_compressed_path
+    global KEY, NAME, ADMST, BOT_NICKNAME, TARGET_ID, SYSTEM_CONTENT, memory_path, memory_compressed_path, client, processing
     KEY = llm_module.get_apikey()
     NAME = llm_module.get_name()
     ADMST = llm_module.get_admst()
@@ -44,6 +44,7 @@ def memory_init():
     ”
     需将其中的过往记忆内容作为基础，在此之上将新提炼的摘要加入，将已有的有关用户画像的信息合并，信息最少的用户信息可以剔除，而群聊事件内容中，如果有旧事件的新进展，则将其追加到旧事件后，最久远（以最新后续为准）、最无聊、最无关紧要的部分内容可以剔除，以避免摘要总长度过长。
     对于琐事，你要减少描述的长度，或直接跳过，可以概述但不能影响原义。
+    你将会收到的聊天消息记录中，'assistant'消息的'content'是{BOT_NICKNAME}实际表述过的话语，'reasoning_content'只是思考过程。
     你需要输出的内容输出格式示例如下：
     用户信息
     -用户账号1|[称呼1、称呼2、称呼3]|用户简述
@@ -57,14 +58,14 @@ def memory_init():
     整篇摘要的期望长度为2500字，极限长度为5000字。
     """
 
+    memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
+    memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
+
     client = OpenAI(api_key=KEY, base_url="https://api.deepseek.com")
     processing = [{
         "role": "system",
         "content": SYSTEM_CONTENT
     }]
-
-    memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
-    memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
 
 def web_search(term):
     try:
@@ -118,7 +119,7 @@ def memory_compress():
                 "role": "user",
                 "content": str(history_memory)
             })
-            anwser = client.chat.completions.create(model="deepseek-v4-pro", messages=processing, reasoning_effort="max", tools=tools, timeout=600)
+            anwser = client.chat.completions.create(model="deepseek-v4-pro", messages=processing, tools=tools, timeout=600)
             if not anwser.choices[0].message.tool_calls:
                 try:
                     with open(memory_compressed_path, "w", encoding="utf-8") as m:

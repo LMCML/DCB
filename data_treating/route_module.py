@@ -1,6 +1,7 @@
 import json
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from openai import OpenAI
 from loguru import logger
 # from llama_cpp import Llama
@@ -8,19 +9,21 @@ from loguru import logger
 from character_simulation import llm_module
 
 KEY = ""
+NAME = ""
 BOT_ID = 0
 BOT_NICKNAME = ""
 SYSTEM_CONTENT = ""
 
 client = None
 history = []
+memory_compressed_path = None
 
 def route_init():
-    global KEY, BOT_ID, BOT_NICKNAME, SYSTEM_CONTENT, client, history
+    global KEY, NAME, BOT_ID, BOT_NICKNAME, SYSTEM_CONTENT, memory_compressed_path, client, history
     KEY = llm_module.get_apikey()
+    NAME = llm_module.get_name()
     BOT_ID = llm_module.get_bot_id()
-    BOT_NICKNAME = llm_module.get_bot_nickname()
-    client = OpenAI(api_key=KEY, base_url="https://api.deepseek.com")
+    BOT_NICKNAME = llm_module.get_bot_nickname()    
     SYSTEM_CONTENT = f"""
     你是一个用于辨别情况的路由引擎，被部署在一个QQ群中，同时还会有一个与你连接的聊天AI也被部署在一起，这个聊天AI的账号是{BOT_ID}，昵称是{BOT_NICKNAME}，因为聊天AI可能存在不止一个，所以账号与昵称是这个与你连接的聊天AI仅有的代号。
     你要处理的数据是QQ群中的聊天消息，每条输入的'role'为'user'的消息都是一条QQ聊天消息，你会收到的消息示例如下：
@@ -85,10 +88,21 @@ def route_init():
     返回"chat_to_bot": true
     """
 
-    history = [{
-    "role": "system",
-    "content": SYSTEM_CONTENT
-    }]
+    memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
+
+    client = OpenAI(api_key=KEY, base_url="https://api.deepseek.com")
+    if not memory_compressed_path.exists():
+        history = [{
+            "role": "system",
+            "content": SYSTEM_CONTENT
+        }]
+    else:
+        with open(memory_compressed_path, "r", encoding="utf-8") as m:
+            memory_compressed = m.read()
+        history = [{
+            "role": "system",
+            "content": SYSTEM_CONTENT + "\n\n---------\n以下为过往记忆，你要着重参考其中的用户信息：\n" + memory_compressed
+        }]
 
 def communicatee_route(user_content):
     global history
@@ -107,7 +121,6 @@ def communicatee_route(user_content):
     except Exception as e:
         logger.error(f"交流对象路由请求失败{e}")
         return False
-
     try:
         route_result = list(json.loads(answer.choices[0].message.content.replace("True", "true").replace("False", "false")).values())[0]
         return route_result

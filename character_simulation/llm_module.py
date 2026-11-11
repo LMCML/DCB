@@ -228,13 +228,13 @@ tools = [{
     "type":"function",
     "function":{
         "name": "expression_send",
-        "description": "当你想要以文字以外的方式表达情感时，或是遇到文字难以言说的情况，可以发送图像表情。图形表情可以连续多次发送以表达情绪的强烈。",
+        "description": "当你想要以文字以外的方式表达情感时，或是遇到文字难以言说的情况，可以发送图像表情。图像表情可以连续多次发送以表达情绪的强烈。发送图像表情会覆盖掉输出的'content'回复，文本输出要在工具调用之后的对话里。",
         "parameters": {
             "type": "object",
             "properties": {
                 "ex_type": {
                     "type": "string",
-                    "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'，并以文本进行回复。",
+                    "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'。",
                     "enum": ["angry", "cry", "cute", "dissatisfied", "laugh", "speechless", "none"]
                 }
             },
@@ -256,127 +256,94 @@ async def completions_created(user_content, user_content_without_image):
         "role": "user",
         "content": user_content_without_image
     })
-    try:
-        answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, tools=tools, timeout=30), timeout=60)
-        if not answer.choices[0].message.tool_calls:
-            history_cache.append({
-                "role": "assistant",
-                "content": answer.choices[0].message.content
-            })
-            history = copy.deepcopy(history_cache)
-            history_for_local_cache.append({
-                "role": "assistant",
-                "content": answer.choices[0].message.content
-            })
-            history_for_local = copy.deepcopy(history_for_local_cache)
-            route_module.sync_history(answer.choices[0].message.content)
-            return {
-                "text": answer.choices[0].message.content,
-                "image": image_list
-            }
-        else:
-            tool_call = answer.choices[0].message.model_dump()
-            history_cache.append(tool_call)
-            history_for_local_cache.append(tool_call)
-            assistant_message_cache = ""
-            for t in tool_call.get("tool_calls"):
-                if t.get("function", {}).get("name") == "web_search":
-                    argument = json.loads(t.get("function", {}).get("arguments")).get("term")
-                    tool_result = await web_search(argument)
-                    history_cache.append({
-                        "role": "tool",
-                        "tool_call_id": t.get("id"),
-                        "content": tool_result
-                    })
-                    history_for_local_cache.append({
-                        "role": "tool",
-                        "tool_call_id": t.get("id"),
-                        "content": f"搜索了{argument}"
-                    })
-                elif t.get("function", {}).get("name") == "expression_send":
-                    argument = json.loads(t.get("function", {}).get("arguments")).get("ex_type")
-                    tool_result = expression_send(argument)
-                    if isinstance(tool_result, str):
-                        if tool_result == "pass":
-                            history_cache.append({
-                                "role": "tool",
-                                "tool_call_id": t.get("id"),
-                                "content": "表情发送取消"
-                            })
-                            history_for_local_cache.append({
-                                "role": "tool",
-                                "tool_call_id": t.get("id"),
-                                "content": "表情发送取消"
-                            })
-                            assistant_message_cache = tool_call.get("content")
-                        else:
-                            history_cache.append({
-                                "role": "tool",
-                                "tool_call_id": t.get("id"),
-                                "content": "参数无效"
-                            })
-                            history_for_local_cache.append({
-                                "role": "tool",
-                                "tool_call_id": t.get("id"),
-                                "content": "参数无效"
-                            })
-                    else:
-                        history_cache.append({
-                            "role": "tool",
-                            "tool_call_id": t.get("id"),
-                            "content": f"已经发送了一个表情包{argument}"
-                        })
-                        history_for_local_cache.append({
-                            "role": "tool",
-                            "tool_call_id": t.get("id"),
-                            "content": f"已经发送了一个表情包{argument}"
-                        })
-                        image_list.append(tool_result)
-                else:
-                    history_cache.append({
-                        "role": "tool",
-                        "tool_call_id": t.get("id"),
-                        "content": "unknown_tool"
-                    })
-                    history_for_local_cache.append({
-                        "role": "tool",
-                        "tool_call_id": t.get("id"),
-                        "content": "unknown_tool"
-                    })
-                    logger.error("出现未知方法调用")
-            if assistant_message_cache:
+    while True:
+        try:
+            answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, tools=tools, timeout=30), timeout=60)
+            if not answer.choices[0].message.tool_calls:
                 history_cache.append({
                     "role": "assistant",
-                    "content": assistant_message_cache
+                    "content": answer.choices[0].message.content,
                 })
                 history = copy.deepcopy(history_cache)
                 history_for_local_cache.append({
                     "role": "assistant",
-                    "content": assistant_message_cache
+                    "content": answer.choices[0].message.content,
                 })
                 history_for_local = copy.deepcopy(history_for_local_cache)
-                route_module.sync_history("".join(i.get("name", "") for i in image_list) + assistant_message_cache)
+                route_module.sync_history(answer.choices[0].message.content)
                 return {
-                    "text": assistant_message_cache,
+                    "text": answer.choices[0].message.content,
                     "image": image_list
                 }
 
-        answer = await asyncio.wait_for(client.chat.completions.create(model="deepseek-flash", messages=history_cache, timeout=30), timeout=30)
-        history_cache.append({
-            "role": "assistant",
-            "content": answer.choices[0].message.content
-        })
-        history = copy.deepcopy(history_cache)
-        history_for_local_cache.append({
-            "role": "assistant",
-            "content": answer.choices[0].message.content
-        })
-        history_for_local = copy.deepcopy(history_for_local_cache)
-        route_module.sync_history("".join(i.get("name", "") for i in image_list) + answer.choices[0].message.content)
-        return {
-            "text": answer.choices[0].message.content,
-            "image": image_list
-        }
-    except Exception as e:
-        logger.error(f"创建对话失败{e}")
-        return "chat_failed"
+            else:
+                tool_call = answer.choices[0].message.model_dump()
+                history_cache.append(tool_call)
+                history_for_local_cache.append(tool_call)
+                for t in tool_call.get("tool_calls"):
+                    if t.get("function", {}).get("name") == "web_search":
+                        argument = json.loads(t.get("function", {}).get("arguments")).get("term")
+                        tool_result = await web_search(argument)
+                        history_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": tool_result
+                        })
+                        history_for_local_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": f"搜索了{argument}"
+                        })
+                    elif t.get("function", {}).get("name") == "expression_send":
+                        argument = json.loads(t.get("function", {}).get("arguments")).get("ex_type")
+                        tool_result = expression_send(argument)
+                        if isinstance(tool_result, str):
+                            if tool_result == "pass":
+                                history_cache.append({
+                                    "role": "tool",
+                                    "tool_call_id": t.get("id"),
+                                    "content": "表情发送取消"
+                                })
+                                history_for_local_cache.append({
+                                    "role": "tool",
+                                    "tool_call_id": t.get("id"),
+                                    "content": "表情发送取消"
+                                })
+                            else:
+                                history_cache.append({
+                                    "role": "tool",
+                                    "tool_call_id": t.get("id"),
+                                    "content": "参数无效"
+                                })
+                                history_for_local_cache.append({
+                                    "role": "tool",
+                                    "tool_call_id": t.get("id"),
+                                    "content": "参数无效"
+                                })
+                        else:
+                            history_cache.append({
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": f"已经发送了一个表情包{argument}"
+                            })
+                            history_for_local_cache.append({
+                                "role": "tool",
+                                "tool_call_id": t.get("id"),
+                                "content": f"已经发送了一个表情包{argument}"
+                            })
+                            image_list.append(tool_result)
+                    else:
+                        history_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": "unknown_tool"
+                        })
+                        history_for_local_cache.append({
+                            "role": "tool",
+                            "tool_call_id": t.get("id"),
+                            "content": "unknown_tool"
+                        })
+                        logger.error("出现未知方法调用")
+        except Exception as e:
+            logger.error(f"创建对话失败{e}")
+            return "chat_failed"

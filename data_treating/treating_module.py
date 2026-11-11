@@ -2,8 +2,10 @@ import copy
 import asyncio
 from collections import deque
 import base64
+import io
 from datetime import datetime
 import requests
+from PIL import Image
 from loguru import logger
 
 from data_treating import face_dictionary, route_module
@@ -82,7 +84,7 @@ def treating_new_mes_function(mes):
                         img_format = "jpeg"
                     if img_format == "jpg":
                         img_format = "jpeg"
-                    if int(m.get("data", {}).get("file_size")) > 24000000:
+                    if int(m.get("data", {}).get("file_size")) > 36000000:
                         try:
                             with open("data_treating/placeholder/Imagetoolargedownloadrejected", "rb") as i:
                                 img_b64 = base64.b64encode(i.read()).decode("utf-8")
@@ -122,13 +124,38 @@ def treating_new_mes_function(mes):
                         except Exception as e:
                             logger.error(f"接收图片下载失败报错占位符失败{e}")
                             continue
-                    img_b64 = base64.b64encode(img.content).decode("utf-8")
-                    a_total_message = {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/{img_format};base64,{img_b64}"}
-                    }
-                    logger.info(f"接收图片{img_format}")
-                    message_list.append(a_total_message)
+                    try:
+                        img_io = Image.open(io.BytesIO(img.content))
+                        if getattr(img_io, "is_animated", False):
+                            img_io.seek(0)
+                            logger.info("动图取首帧")
+                        img_io.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
+                        img_io = img_io.convert("RGBA")
+                        img_png = io.BytesIO()
+                        img_io.save(img_png, format="PNG", optimize=True)
+                        # logger.info("图片格式统一化")
+                        img_b64 = base64.b64encode(img_png.getvalue()).decode("utf-8")
+                        a_total_message = {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"}
+                        }
+                        logger.info(f"接收图片{img_format}")
+                        message_list.append(a_total_message)
+                    except Exception as e:
+                        logger.error(f"图片格式转换失败{e}")
+                        try:
+                            with open("data_treating/placeholder/imagedownloadfailed", "rb") as i:
+                                img_b64 = base64.b64encode(i.read()).decode("utf-8")
+                                a_total_message = {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
+                                }
+                            logger.info("接收图片下载失败报错占位符")
+                            message_list.append(a_total_message)
+                            continue
+                        except Exception as e:
+                            logger.error(f"接收图片下载失败报错占位符失败{e}")
+                            continue
     return reply_soon
 async def treating_new_mes(mes):
     async with treat_lock:
