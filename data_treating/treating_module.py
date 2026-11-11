@@ -84,20 +84,23 @@ def treating_new_mes_function(mes):
                         img_format = "jpeg"
                     if img_format == "jpg":
                         img_format = "jpeg"
-                    if int(m.get("data", {}).get("file_size")) > 36000000:
-                        try:
-                            with open("data_treating/placeholder/Imagetoolargedownloadrejected", "rb") as i:
-                                img_b64 = base64.b64encode(i.read()).decode("utf-8")
-                                a_total_message = {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
-                                }
-                            logger.info("接收图片过大报错占位符")
-                            message_list.append(a_total_message)
-                            continue
-                        except Exception as e:
-                            logger.error(f"接收图片过大报错占位符失败{e}")
-                            continue
+                    try:
+                        if m.get("data", {}).get("file_size") is not None and int(m.get("data", {}).get("file_size")) > 36000000:
+                            try:
+                                with open("data_treating/placeholder/Imagetoolargedownloadrejected", "rb") as i:
+                                    img_b64 = base64.b64encode(i.read()).decode("utf-8")
+                                    a_total_message = {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
+                                    }
+                                logger.info("接收图片过大报错占位符")
+                                message_list.append(a_total_message)
+                                continue
+                            except Exception as e:
+                                logger.error(f"接收图片过大报错占位符失败{e}")
+                                continue
+                    except Exception as e:
+                        logger.error(f"检查图片大小失败{e}")
                     request_times = 0
                     while request_times <= 5:
                         try:
