@@ -25,6 +25,7 @@ def client_init():
 
 history = []
 history_for_local = []
+history_light = []
 save_lock = asyncio.Lock()
 
 def get_apikey():
@@ -73,11 +74,18 @@ def load_memory():
     memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
+    
     if memory_path.exists():
         try:
             with open(memory_path, "r", encoding="utf-8") as m:
                 history = json.load(m)
                 history_for_local = list(history)
+                if memory_compressed_path.exists():
+                    with open(memory_compressed_path, "r", encoding="utf-8") as m:
+                        memory_compressed = m.read()
+                    history_light.append({"system_content": f"以下为过往记忆：\n{memory_compressed}"})
+                else:
+                    history_light.append({"system_content": "无过往记忆"})
                 logger.info("记忆文件读取成功")
                 return "load_successful"
         except Exception as e:
@@ -90,6 +98,7 @@ def load_memory():
                 "content": SYSTEM_CONTENT
             }]
             history_for_local = list(history)
+            history_light.append({"system_content": "无过往记忆"})
             try:
                 with open(memory_path, "w", encoding="utf-8") as m:
                     json.dump(history_for_local, m, ensure_ascii=False, indent=2)
@@ -106,6 +115,7 @@ def load_memory():
                 "content": SYSTEM_CONTENT + "\n\n---------\n以下为过往记忆：\n" + memory_compressed 
             }]
             history_for_local = list(history)
+            history_light.append({"system_content": f"以下为过往记忆：\n{memory_compressed}"})
             try:
                 with open(memory_path, "w", encoding="utf-8") as m:
                     json.dump(history_for_local, m, ensure_ascii=False, indent=2)
@@ -119,23 +129,50 @@ def save_memory_function(history):
     memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     memory_backup_path = Path(f"character_simulation/memories/{NAME}/{NAME}_backup.json")
+    memory_light_path = Path(f"character_simulation/memories/{NAME}/{NAME}_light.json")
+
     if memory_path.exists():
         try:
             memory_path.copy(memory_backup_path)
         except Exception as e:
             logger.error(f"复制备份失败{e}")
+    
     try:
         content_saved = json.dumps(history, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error(f"记忆内容序列化失败{e}")
-        return
-    try:
         memory_tmp = memory_path.with_name(f"{NAME}.tmp")
         memory_tmp.write_text(content_saved, encoding="utf-8")
         memory_tmp.replace(memory_path)
         logger.info("已存档")
     except Exception as e:
         logger.error(f"记忆内容保存失败{e}")
+        return
+    
+    try:
+        for m in history:
+            if m.get("role") == "user":
+                for c in m.get("content"):
+                    if c.get("text") == "这里曾是一张图片":
+                        continue
+                    elif "当前时间" in c.get("text"):
+                        continue
+                    else:
+                        history_light.append({"user_content": c.get("text")})
+            elif m.get("role") == "assistant":
+                if m.get("tool_calls"):
+                    continue
+                if m.get("content").strip() == "，" or m.get("content").strip() == ",":
+                    continue
+                else:
+                    history_light.append({"assistant_content": m.get("content")})
+            elif m.get("role") == "tool":
+                history_light.append({"tool_content": m.get("content")})
+        content_light_saved = json.dumps(history_light, ensure_ascii=False, indent=1)
+        memory_light_tmp = memory_light_path.with_name(f"{NAME}_light.tmp")
+        memory_light_tmp.write_text(content_light_saved, encoding="utf-8")
+        memory_light_tmp.replace(memory_light_path)
+    except Exception as e:
+        logger.error(f"轻量化记忆内容保存失败{e}")
+        return
 async def save_memory():
     history_cache = copy.deepcopy(history_for_local)
     async with save_lock:
@@ -228,7 +265,7 @@ tools = [{
     "type":"function",
     "function":{
         "name": "expression_send",
-        "description": "当你想要以文字以外的方式表达情感时，或是遇到文字难以言说的情况，可以发送图像表情。图像表情可以连续多次发送以表达情绪的强烈。发送图像表情会覆盖掉输出的'content'回复，文本输出要在工具调用之后的对话里。",
+        "description": "当你想要以文字以外的方式表达情感时，或是遇到文字难以言说的情况，在符合提示词规则的前提下，可以发送图像表情来替代情绪或简单的观点表达。图像表情可以连续多次发送以表达情绪的强烈。发送图像表情会覆盖掉输出的'content'回复，文本输出要在工具调用之后的对话里。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -263,11 +300,13 @@ async def completions_created(user_content, user_content_without_image):
                 history_cache.append({
                     "role": "assistant",
                     "content": answer.choices[0].message.content,
+                    "reasoning_content": answer.choices[0].message.reasoning_content
                 })
                 history = copy.deepcopy(history_cache)
                 history_for_local_cache.append({
                     "role": "assistant",
                     "content": answer.choices[0].message.content,
+                    "reasoning_content": answer.choices[0].message.reasoning_content
                 })
                 history_for_local = copy.deepcopy(history_for_local_cache)
                 route_module.sync_history(answer.choices[0].message.content)

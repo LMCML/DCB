@@ -10,6 +10,7 @@ from character_simulation import llm_module
 KEY = ""
 NAME = ""
 ADMST = 0
+BOT_ID = 0
 BOT_NICKNAME = ""
 TARGET_ID = 0
 SYSTEM_CONTENT = ""
@@ -17,10 +18,11 @@ SYSTEM_CONTENT = ""
 client = None
 processing = []
 memory_path = None
+memory_light_path = None
 memory_compressed_path = None
 
 def memory_init():
-    global KEY, NAME, ADMST, BOT_NICKNAME, TARGET_ID, SYSTEM_CONTENT, memory_path, memory_compressed_path, client, processing
+    global KEY, NAME, ADMST, BOT_ID, BOT_NICKNAME, TARGET_ID, SYSTEM_CONTENT, memory_path, memory_light_path, memory_compressed_path, client, processing
     KEY = llm_module.get_apikey()
     NAME = llm_module.get_name()
     ADMST = llm_module.get_admst()
@@ -28,23 +30,24 @@ def memory_init():
     TARGET_ID = llm_module.get_target_id()
     SYSTEM_CONTENT = f"""
     你要进行对历史记录信息的记忆提炼摘要工作，你需要只输出对历史记录信息提炼摘要后的内容。对于历史记录信息中的内容，你要仔细辨别，对不确定的事情、疑似不完整的信息不要猜测，可以调用联网搜索工具，可以用“疑似”描述，或直接剔除这部分消息，主要对可做出准确结论的消息进行处理。
-    你将会收到一组来自QQ群的聊天消息记录，该组消息记录来源的群聊的群聊号为{TARGET_ID}，该群聊中有一个名为{BOT_NICKNAME}的聊天AI，该聊天AI的管理员的账号是{ADMST}（仅是聊天AI{BOT_NICKNAME}的管理员，不一定是群聊管理员），'role'为'assistant'的消息由{BOT_NICKNAME}发送，'role'为'user'的消息由其他用户发送。
+    你将会收到一组来自QQ群的聊天消息记录，该组消息记录来源的群聊的群聊号为{TARGET_ID}，该群聊中有一个昵称为{BOT_NICKNAME}、账号为{BOT_ID}的聊天AI，该聊天AI的管理员的账号是{ADMST}（仅是聊天AI{BOT_NICKNAME}的管理员，不一定是群聊管理员）。消息记录中，'assistant_content'对应的消息由{BOT_NICKNAME}发送，'user_content'对应的消息由其他用户发送。
     你需要提炼的内容包括：
     用户（以用户账号为准）的画像，包括用户的信息（简称、别名、职业、学历、住址、文化等），用户的喜好厌恶；
     群聊（以群聊号为准）中发生过的主要事件，及其涉及的实体（人、物、地点、时间等）；
     过滤掉无意义的消息。
-    你将会收到的聊天消息记录中，'user'消息的'content'格式示例如下：
-    ["type": 'text', 'text': '[用户昵称1|用户帐号1][消息id1]:['用户消息1[图片]'][消息发送时间]', "type": 'text', 'text': '这里曾是一张图片', 'type": 'text', 'text': '[用户昵称2|用户帐号2][消息id2]:['用户消息2'][消息发送时间]', 'type': 'text', 'text': '该组消息时间']
-    这是一个包含三条消息和一个时间记录的列表，其中的第一条消息为用户1发送的一条带有图片的消息，第二条消息为用户1发送的图片记录，第三条消息为用户2发送的一条纯文本消息，最后为该组消息的时间记录。
-    你将会收到的聊天消息记录中，若'system'消息的'content'中包含以下示例内容：
-    “
-    ---------
+    你将会收到的聊天消息记录中，'user_content'格式示例如下：
+    "user_content": "[用户昵称A|用户帐号A][消息id]:['[图片]'][消息时间]",
+    "user_content": "[用户昵称B|用户帐号B][消息id]:['[@用户帐号A] 如何评价这个'][消息时间]"
+    该组消息示例中，用户A发送了一张图片，而用户B使用CQ码@了用户A。
+    若'user_content'中出现了“[与你交流]”，则意味着这条消息在与{BOT_NICKNAME}交流。若'user_content'中出现了“[[回复了你的消息('具体内容')]]”，则意味着这条消息使用CQ码回复了{BOT_NICKNAME}的消息。
+    你将会收到的聊天消息记录中，'assistant_content'中的“|||”是分割符，意味着这条消息被按分隔符分多次发送。
+    你将会收到的聊天消息记录中，若'system_content'中包含以下示例内容：
     以下为过往记忆：
-    过往记忆
-    ”
-    需将其中的过往记忆内容作为基础，在此之上将新提炼的摘要加入，将已有的有关用户画像的信息合并，信息最少的用户信息可以剔除，而群聊事件内容中，如果有旧事件的新进展，则将其追加到旧事件后，最久远（以最新后续为准）、最无聊、最无关紧要的部分内容可以剔除，以避免摘要总长度过长。
+    过往记忆具体内容
+    需将其中的过往记忆内容作为基础，在此之上将新提炼的摘要加入，将已有的有关用户画像的信息合并，而群聊事件内容中，如果有旧事件的新进展，则将其追加到旧事件后。
+    新旧摘要合并后，信息最少的用户信息可以剔除，最久远（以最新后续为准）、最无聊、最无关紧要的部分群聊事件可以剔除，以避免摘要总长度过长。
     对于琐事，你要减少描述的长度，或直接跳过，可以概述但不能影响原义。
-    你将会收到的聊天消息记录中，'assistant'消息的'content'是{BOT_NICKNAME}实际表述过的话语，'reasoning_content'只是思考过程。
+    整篇摘要的期望长度为2500字，极限长度为5000字。
     你需要输出的内容输出格式示例如下：
     用户信息
     -用户账号1|[称呼1、称呼2、称呼3]|用户简述
@@ -55,10 +58,10 @@ def memory_init():
     --事件时间|事件2
     -群聊号2
     --事件时间|事件1
-    整篇摘要的期望长度为2500字，极限长度为5000字。
     """
 
     memory_path = Path(f"character_simulation/memories/{NAME}/{NAME}.json")
+    memory_light_path = Path(f"character_simulation/memories/{NAME}/{NAME}_light.json")
     memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
 
     client = OpenAI(api_key=KEY, base_url="https://api.deepseek.com")
@@ -113,7 +116,7 @@ def memory_compress():
     while True:
         logger.info("开始记忆压缩")
         try:
-            with open(memory_path, "r", encoding="utf-8") as m:
+            with open(memory_light_path, "r", encoding="utf-8") as m:
                 history_memory = json.load(m)
             processing.append({
                 "role": "user",
