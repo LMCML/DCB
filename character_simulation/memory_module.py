@@ -30,7 +30,7 @@ def memory_init():
     TARGET_ID = llm_module.get_target_id()
     SYSTEM_CONTENT = f"""
     你要进行对历史记录信息的记忆提炼摘要工作，你需要只输出对历史记录信息提炼摘要后的内容。对于历史记录信息中的内容，你要仔细辨别，对不确定的事情、疑似不完整的信息不要猜测，可以调用联网搜索工具，可以用“疑似”描述，或直接剔除这部分消息，主要对可做出准确结论的消息进行处理。
-    你将会收到一组来自QQ群的聊天消息记录，该组消息记录来源的群聊的群聊号为{TARGET_ID}，该群聊中有一个昵称为{BOT_NICKNAME}、账号为{BOT_ID}的聊天AI，该聊天AI的管理员的账号是{ADMST}（仅是聊天AI{BOT_NICKNAME}的管理员，不一定是群聊管理员）。消息记录中，'assistant_content'对应的消息由{BOT_NICKNAME}发送，'user_content'对应的消息由其他用户发送。
+    你将会收到一组来自QQ群的聊天消息记录，该组消息记录来源的群聊的群聊号为{TARGET_ID}，该群聊中有一个昵称为{BOT_NICKNAME}、账号为{BOT_ID}的聊天AI，该聊天AI的管理员的账号是{ADMST}（仅是聊天AI{BOT_NICKNAME}的管理员，不一定是群聊管理员）。消息记录中，'assistant_content'对应的消息由{BOT_NICKNAME}发送，'tool_content'对应的消息是{BOT_NICKNAME}调用工具后的结果，'user_content'对应的消息由其他用户发送。
     你需要提炼的内容包括：
     用户（以用户账号为准）的画像，包括用户的信息（简称、别名、职业、学历、住址、文化等），用户的喜好厌恶；
     群聊（以群聊号为准）中发生过的主要事件，及其涉及的实体（人、物、地点、时间等）；
