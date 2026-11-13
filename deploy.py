@@ -18,19 +18,14 @@ from character_simulation import llm_module, memory_module
 
 os.chdir(Path(__file__).resolve().parent)
 
+NAME = ""
 ADMST = 0
 WS_URL = ""
 ACCESS_TOKEN = ""
 
-def deploy_init(url, token):
-    global ADMST, WS_URL, ACCESS_TOKEN
-    ADMST = llm_module.get_admst()
-    WS_URL = url
-    ACCESS_TOKEN = token
-
 send_delay = (10, 12)
 send_interval = (3, 5)
-chat_interval = (300, 900)
+chat_interval = (300, 600)
 chat_wait = asyncio.Event()
 auto_save = asyncio.Event()
 
@@ -38,13 +33,21 @@ task_cache = set()
 pending_future = {}
 send_lock = asyncio.Lock()
 
-log_path = Path("logs/console.log")
-log_path.parent.mkdir(parents=True, exist_ok=True)
-logger.remove()
-logger.level("INFO", color="<green>")
-logger.level("ERROR", color="<red>")
-logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}")
-logger.add(log_path, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}", rotation="1 MB")
+log_path = None
+
+def deploy_init(url, token):
+    global NAME, ADMST, WS_URL, ACCESS_TOKEN, log_path
+    NAME = llm_module.get_name()
+    ADMST = llm_module.get_admst()
+    WS_URL = url
+    ACCESS_TOKEN = token
+    log_path = Path(f"logs/{NAME}console.log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.remove()
+    logger.level("INFO", color="<green>")
+    logger.level("ERROR", color="<red>")
+    logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}")
+    logger.add(log_path, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}", rotation="1 MB")
 
 def clear_future():
     for e in list(pending_future.keys()):
