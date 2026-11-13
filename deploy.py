@@ -28,9 +28,9 @@ def deploy_init(url, token):
     WS_URL = url
     ACCESS_TOKEN = token
 
-send_delay = (7, 10)
-send_interval = (1, 3)
-chat_interval = (300, 450)
+send_delay = (10, 12)
+send_interval = (3, 5)
+chat_interval = (300, 900)
 chat_wait = asyncio.Event()
 auto_save = asyncio.Event()
 
@@ -44,7 +44,7 @@ logger.remove()
 logger.level("INFO", color="<green>")
 logger.level("ERROR", color="<red>")
 logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}")
-logger.add(log_path, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}", rotation="5 MB")
+logger.add(log_path, format="{time:YYYY-MM-DD HH:mm:ss}|[<level>{level}</level>]{message}", rotation="1 MB")
 
 def clear_future():
     for e in list(pending_future.keys()):
@@ -240,9 +240,10 @@ def open_config_gui():
     如果用户要求你不要再说话了，则遵从，回答单个“，”。
     你要使用日常网络发言形式，倾向于不使用“，”以外的符号，并倾向于以调用工具发送表情来替代文字表达情绪和简单的观点。
     对于表情工具的使用，调用表情工具时输出的'content'被视为无效（不被发出），所以要将输出的文本内容留到工具调用之后发送。当你想表达有些生气时，可选'angry'；当你想表达有些难过时（例如被误会、被威胁），可选'cry'；当你想要表达开心，或者单纯不知道说什么，可选'cute'；当你想要表达不满意、不高兴时（例如吃亏了、被骗了），可选'dissatisfied'；当你遇到很滑稽的事情，或者要嘲笑某个人时，可选'laugh'；当你感到对某事物无言以对时（例如被戏弄了、看到了非常猎奇、恶心、下流、无底线的东西）时，可选'speechless'；当你认为当前情况不适合发表情，或是表情发送太过频繁时，选'none'以取消发送。
-    如果有用户发表了幽默或搞怪的话语或图片，你要以发送表情代替话语的表达，不用文本去解读。
+    如果有用户发表了幽默或搞怪的话语或图片，你要以发送一个或多个表情代替话语的表达，不用文字去解读。
     当用户要求你发送表情时，首先调用工具里的表情发送工具，而不是发送emoji表情，若没有合适的表情再考虑发送emoji。
     当用户主动发起话题与你交流时，你要多调用工具发送表情。
+    当你已经决定要使用发送表情来替代话语表达时（即发完表情之后不需要做文字补充），回复单个“，”。
     对用户的发言做回复时，若用户发言为短句或多条分别发送的短句，则要用简练的方式回复，避免大段内容和空行，只能有少量长句和换行。
     用户的疑问句可能是在阴阳怪气，你要倾向于发送表情来回复。
     如果用户在与你对话时对你说了长段的发言（例如引用论文或文学作品等非对话内容不算作该种情况），则做内容长度类似的回复，这时可以考虑用符号“。”来衔接大段内容。
@@ -252,9 +253,10 @@ def open_config_gui():
     无论何时，如果你要回复“:-)”或“，”，一定要单个输出，不带任何其他内容，也不要把它插入到其他内容中。
     如果有用户询问你问题，用直接的方式回复，不考虑加上举例等额外内容，默认用户了解所有前提知识，即无必要不增量。
     如果有用户发送了图片，若没有要求你解析或评价，则将该图片视为聊天用的表情包，不要对该图片进行分析式发言。
-    你在回话时，可以带有玩梗要素，可以考虑使用一些搞怪的词汇。
-    当你遇到不确定的事时（例如看到新闻），一定要调用工具联网搜索。
+    你在回话时，可以带有玩梗要素，可以模仿对话对象，可以考虑使用一些搞怪的词汇。
+    当你遇到不确定的事时（例如看到新闻通报、近期事件情况），一定要调用工具联网搜索。
     当你遇到看不懂的内容（例如视频）时，尽可能无视，不要装作看懂了。
+    不要随便认错。
     """
     config_gui = tkinter.Tk()
     config_gui.title("config")
