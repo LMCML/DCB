@@ -25,7 +25,6 @@ def client_init():
 
 history = []
 history_for_local = []
-history_light = []
 save_lock = asyncio.Lock()
 
 def get_apikey():
@@ -80,17 +79,12 @@ def load_memory():
             with open(memory_path, "r", encoding="utf-8") as m:
                 history = json.load(m)
                 history_for_local = list(history)
-                if memory_compressed_path.exists():
-                    with open(memory_compressed_path, "r", encoding="utf-8") as m:
-                        memory_compressed = m.read()
-                    history_light.append({"system_content": f"以下为过往记忆：\n{memory_compressed}"})
-                else:
-                    history_light.append({"system_content": "无过往记忆"})
                 logger.info("记忆文件读取成功")
                 return "load_successful"
         except Exception as e:
             logger.error(f"读取记忆文件失败{e}")
             return "load_failed"
+    
     else:
         if not memory_compressed_path.exists():
             history = [{
@@ -98,7 +92,6 @@ def load_memory():
                 "content": SYSTEM_CONTENT
             }]
             history_for_local = list(history)
-            history_light.append({"system_content": "无过往记忆"})
             try:
                 with open(memory_path, "w", encoding="utf-8") as m:
                     json.dump(history_for_local, m, ensure_ascii=False, indent=2)
@@ -115,7 +108,6 @@ def load_memory():
                 "content": SYSTEM_CONTENT + "\n\n---------\n以下为过往记忆：\n" + memory_compressed 
             }]
             history_for_local = list(history)
-            history_light.append({"system_content": f"以下为过往记忆：\n{memory_compressed}"})
             try:
                 with open(memory_path, "w", encoding="utf-8") as m:
                     json.dump(history_for_local, m, ensure_ascii=False, indent=2)
@@ -130,6 +122,7 @@ def save_memory_function(history):
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     memory_backup_path = Path(f"character_simulation/memories/{NAME}/{NAME}_backup.json")
     memory_light_path = Path(f"character_simulation/memories/{NAME}/{NAME}_light.json")
+    memory_compressed_path = Path(f"character_simulation/memories/{NAME}/{NAME}_compressed.txt")
 
     if memory_path.exists():
         try:
@@ -148,6 +141,13 @@ def save_memory_function(history):
         return
     
     try:
+        history_light = []
+        if memory_compressed_path.exists():
+            with open(memory_compressed_path, "r", encoding="utf-8") as m:
+                memory_compressed = m.read()
+            history_light.append({"system_content": f"以下为过往记忆：\n{memory_compressed}"})
+        else:
+            history_light.append({"system_content": "无过往记忆"})
         for m in history:
             if m.get("role") == "user":
                 for c in m.get("content"):
