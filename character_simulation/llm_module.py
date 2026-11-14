@@ -2,6 +2,7 @@ import json
 import copy
 import asyncio
 import requests
+import random
 from datetime import datetime
 from pathlib import Path
 from openai import AsyncOpenAI
@@ -208,34 +209,68 @@ def expression_send(ex_type):
     logger.info("调用表情工具")
     match ex_type:
         case "angry":
+            folder = Path("character_simulation/expression_package/angry")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包angry|||",
-                "path": "character_simulation/expression_package/angry"
+                "path": str(expression)
             }
         case "cry":
+            folder = Path("character_simulation/expression_package/cry")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包cry|||",
-                "path": "character_simulation/expression_package/cry"
+                "path": str(expression)
             }
         case "cute":
+            folder = Path("character_simulation/expression_package/cute")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包cute|||",
-                "path": "character_simulation/expression_package/cute"
+                "path": str(expression)
+            }
+        case "disgust":
+            folder = Path("character_simulation/expression_package/disgust")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
+            return {
+                "name": "调用工具发送了表情包disgust|||",
+                "path": str(expression)
             }
         case "dissatisfied":
+            folder = Path("character_simulation/expression_package/dissatisfied")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包dissatisfied|||",
-                "path": "character_simulation/expression_package/dissatisfied"
+                "path": str(expression)
             }
         case "laugh":
+            folder = Path("character_simulation/expression_package/laugh")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包laugh|||",
-                "path": "character_simulation/expression_package/laugh"
+                "path": str(expression)
+            }
+        case "scared":
+            folder = Path("character_simulation/expression_package/scared")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
+            return {
+                "name": "调用工具发送了表情包scared|||",
+                "path": str(expression)
             }
         case "speechless":
+            folder = Path("character_simulation/expression_package/speechless")
+            expressions = [e for e in folder.iterdir() if e.is_file()]
+            expression = random.choice(expressions)
             return {
                 "name": "调用工具发送了表情包speechless|||",
-                "path": "character_simulation/expression_package/speechless"
+                "path": str(expression)
             }
         case "none":
             logger.info("取消表情工具调用")
@@ -272,7 +307,7 @@ tools = [{
                 "ex_type": {
                     "type": "string",
                     "description": "根据情况选择表情类型。若发现情况不适合发送表情，或发现表情发送过于频繁，则返回'none'。",
-                    "enum": ["angry", "cry", "cute", "dissatisfied", "laugh", "speechless", "none"]
+                    "enum": ["angry", "cry", "cute", "disgust", "dissatisfied", "laugh", "scared", "speechless", "none"]
                 }
             },
             "required": ["ex_type"]
