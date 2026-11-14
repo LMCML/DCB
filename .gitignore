@@ -3,3 +3,4 @@ __pycache__/
 *.env
 logs/*
 character_simulation/memories/*
+data_treating/models/AlphaRoute-0.8B-v1.0-Q4_K_M.gguf
