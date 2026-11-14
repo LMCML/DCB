@@ -25,7 +25,7 @@ ACCESS_TOKEN = ""
 
 send_delay = (10, 12)
 send_interval = (3, 5)
-chat_interval = (300, 600)
+chat_interval = None
 chat_wait = asyncio.Event()
 auto_save = asyncio.Event()
 
@@ -35,12 +35,16 @@ send_lock = asyncio.Lock()
 
 log_path = None
 
-def deploy_init(url, token):
-    global NAME, ADMST, WS_URL, ACCESS_TOKEN, log_path
+def deploy_init(url, token, activity_level):
+    global NAME, ADMST, WS_URL, ACCESS_TOKEN, chat_interval, log_path
     NAME = llm_module.get_name()
     ADMST = llm_module.get_admst()
     WS_URL = url
     ACCESS_TOKEN = token
+    if activity_level == "high":
+        chat_interval = (300, 450)
+    else:
+        chat_interval = (900, 1200)
     log_path = Path(f"logs/{NAME}console.log")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logger.remove()
@@ -277,6 +281,7 @@ def open_config_gui():
         ws_url_value = str(item_ws_url_content.get().strip())
         ws_token_value = str(item_ws_token_content.get().strip())
         system_content_value = str(text_system_content.get("1.0", "end-1c"))
+        activity_level_value = str(item_activity_level_content.get().strip())
         set_key("config.env", "KEY", key_value)
         set_key("config.env", "NAME", name_value)
         set_key("config.env", "ADMST", str(admst_value))
@@ -299,13 +304,13 @@ def open_config_gui():
         memory_module.memory_init()
         treating_module.treating_init()
         route_module.route_init()
-        deploy_init(ws_url_value, ws_token_value)
+        deploy_init(ws_url_value, ws_token_value, activity_level_value)
         config_result = True
         config_gui.destroy()
 
     screen_width, screen_height = config_gui.maxsize()
     gui_width = screen_width / 2
-    gui_height = screen_height / 1.5
+    gui_height = screen_height / 1.25
     config_gui.geometry(f"{int(gui_width)}x{int(gui_height)}+{int(screen_width / 2 - gui_width / 2)}+{int(screen_height / 2 - gui_height / 2)}")
     config_gui.configure(bg="#FFFFFF")
     config_gui_mainbody_background = tkinter.Frame(config_gui)
@@ -323,7 +328,7 @@ def open_config_gui():
         items_zone.columnconfigure(c, weight=1, uniform="colgroup")
     items_type_zone = tkinter.Frame(items_zone)
     items_type_zone.grid(row=0, column=0, sticky="nsew")
-    for r in range(9):
+    for r in range(10):
         items_type_zone.rowconfigure(r, weight=1, uniform="rowgroup")
     items_type_zone.columnconfigure(0, weight=1, uniform="colgroup")
     item_key_type = tkinter.Label(items_type_zone, text="DeepSeek API Key", font=("Consolas", 10))
@@ -344,29 +349,35 @@ def open_config_gui():
     item_ws_url_type.grid(row=7, column=0, sticky="nsew")
     item_ws_token_type = tkinter.Label(items_type_zone, text="NapCat ws服务器token", font=("Consolas", 10))
     item_ws_token_type.grid(row=8, column=0, sticky="nsew")
+    item_activity_level_type = tkinter.Label(items_type_zone, text="活跃等级", font=("Consolas", 10))
+    item_activity_level_type.grid(row=9, column=0, sticky="nsew")
     items_content_zone = tkinter.Frame(items_zone)
     items_content_zone.grid(row=0, column=1, columnspan=3, sticky="nsew")
-    for r in range(9):
+    for r in range(10):
         items_content_zone.rowconfigure(r, weight=1, uniform="rowgroup")
     items_content_zone.columnconfigure(0, weight=1, uniform="colgroup")
+    items_content_zone.columnconfigure(1, weight=1, uniform="colgroup")
     item_key_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_key_content.grid(row=0, column=0, sticky="nsew")
+    item_key_content.grid(row=0, column=0, columnspan=2, sticky="nsew")
     item_name_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_name_content.grid(row=1, column=0, sticky="nsew")
+    item_name_content.grid(row=1, column=0, columnspan=2, sticky="nsew")
     item_admst_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_admst_content.grid(row=2, column=0, sticky="nsew")
+    item_admst_content.grid(row=2, column=0, columnspan=2, sticky="nsew")
     item_bot_id_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_bot_id_content.grid(row=3, column=0, sticky="nsew")
+    item_bot_id_content.grid(row=3, column=0, columnspan=2, sticky="nsew")
     item_bot_nickname_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_bot_nickname_content.grid(row=4, column=0, sticky="nsew")
+    item_bot_nickname_content.grid(row=4, column=0, columnspan=2, sticky="nsew")
     item_target_type_content = tkinter.StringVar(value="group")
-    tkinter.Radiobutton(items_content_zone, text="群聊", variable=item_target_type_content, value="group", font=("Consolas", 10)).grid(row=5, column=0, sticky="nsw")
+    tkinter.Radiobutton(items_content_zone, text="群聊", variable=item_target_type_content, value="group", font=("Consolas", 10)).grid(row=5, column=0, columnspan=2, sticky="nsw")
     item_target_id_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_target_id_content.grid(row=6, column=0, sticky="nsew")
+    item_target_id_content.grid(row=6, column=0, columnspan=2, sticky="nsew")
     item_ws_url_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_ws_url_content.grid(row=7, column=0, sticky="nsew")
+    item_ws_url_content.grid(row=7, column=0, columnspan=2, sticky="nsew")
     item_ws_token_content = tkinter.Entry(items_content_zone, font=("Consolas", 10))
-    item_ws_token_content.grid(row=8, column=0, sticky="nsew")
+    item_ws_token_content.grid(row=8, column=0, columnspan=2, sticky="nsew")
+    item_activity_level_content = tkinter.StringVar(value="high")
+    tkinter.Radiobutton(items_content_zone, text="high", variable=item_activity_level_content, value="high", font=("Consolas", 10)).grid(row=9, column=0, sticky="nsw")
+    tkinter.Radiobutton(items_content_zone, text="low", variable=item_activity_level_content, value="low", font=("Consolas", 10)).grid(row=9, column=1, sticky="nsw")
 
     blank_line = tkinter.Frame(config_gui_mainbody)
     blank_line.grid(row=15, column=0, rowspan=5, sticky="nsew")
