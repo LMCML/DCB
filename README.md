@@ -32,3 +32,11 @@ https://www.apache.org/licenses/LICENSE-2.0
 Pillow - HPND
 Copyright (c) 2010-2024 by Jeffrey A. Clark and contributors
 https://github.com/python-pillow/Pillow/blob/main/LICENSE
+
+llama-cpp-python - MIT
+Copyright (c) 2023 Andrei Betlen
+https://opensource.org/licenses/MIT
+
+AlphaRoute - Apache 2.0
+Copyright (c) NamanAgnih0tri
+https://www.apache.org/licenses/LICENSE-2.0
