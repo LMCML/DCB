@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from openai import OpenAI
 from loguru import logger
-# from llama_cpp import Llama
 
 from character_simulation import llm_module
 
@@ -42,10 +41,7 @@ def route_init():
     [蓝花矢车菊|3218413440][mesid735977567]:['聊天AI，你好'][2026-11-07 21:05:03]
     返回"chat_to_bot": false
 
-    [蓝花矢车菊|3218413440][mesid735977567]:['聊天AI，你好'][2026-11-07 21:05:03]
-    返回"chat_to_bot": false
-
-    [蓝花矢车菊|3218413440][mesid735977567]:['{BOT_ID}在不在'][2026-11-07 21:05:03]
+    [蓝花矢车菊|3218413440][mesid735977567]:['{BOT_NICKNAME}在不在'][2026-11-07 21:05:03]
     返回"chat_to_bot": true
 
     [蓝花矢车菊|3218413440][mesid735977567]:['[回复了你的消息('是的')][@2398367016] 真的吗'][2026-11-07 21:05:03]
@@ -139,10 +135,3 @@ def sync_history(bot_content):
     })
     if len(history) > 100:
         del history[1:11]
-
-# llm = Llama(
-#     model_path="data_treating/models/AlphaRoute-0.8B-v1.0-Q4_K_M.gguf",
-#     n_ctx=4096,
-#     n_gpu_layers=0,
-#     verbose=False
-# )

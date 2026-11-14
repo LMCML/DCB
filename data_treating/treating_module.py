@@ -62,7 +62,7 @@ def treating_new_mes_function(mes):
                 return
             message_combined = f"[{nickname}|{user_id}][mesid{mesid}]:['{user_message}'][{datetime.now().replace(microsecond=0)}]"
             route_result = route_module.communicatee_route(message_combined)
-            if route_result:
+            if route_result == True:
                 a_total_message = {
                     "type": "text",
                     "text": f"[与你交流]{message_combined}"
