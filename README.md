@@ -5,38 +5,38 @@
 
 # 本项目使用以下内容
 
-Python - PSF License Version 2
-Copyright (c) 2001-2024 Python Software Foundation
-https://docs.python.org/3/license.html
+Python - PSF License Version 2  
+Copyright (c) 2001-2024 Python Software Foundation  
+https://docs.python.org/3/license.html  
 
-python-dotenv - BSD 3-Clause
-Copyright (c) 2014-2021, Saurabh Kumar
-https://github.com/theskumar/python-dotenv/blob/main/LICENSE
+python-dotenv - BSD 3-Clause  
+Copyright (c) 2014-2021, Saurabh Kumar  
+https://github.com/theskumar/python-dotenv/blob/main/LICENSE  
 
-websockets - BSD 3-Clause
-Copyright (c) 2013-2024 Aymeric Augustin and contributors
-https://github.com/python-websockets/websockets/blob/main/LICENSE
+websockets - BSD 3-Clause  
+Copyright (c) 2013-2024 Aymeric Augustin and contributors  
+https://github.com/python-websockets/websockets/blob/main/LICENSE  
 
-loguru - MIT
-Copyright (c) 2017 Delgan
-https://github.com/Delgan/loguru/blob/master/LICENSE
+loguru - MIT  
+Copyright (c) 2017 Delgan  
+https://github.com/Delgan/loguru/blob/master/LICENSE  
 
-openai - Apache 2.0
-Copyright (c) 2023 OpenAI
-https://www.apache.org/licenses/LICENSE-2.0
+openai - Apache 2.0  
+Copyright (c) 2023 OpenAI  
+https://www.apache.org/licenses/LICENSE-2.0  
 
-requests - Apache 2.0
-Copyright 2015 Kenneth Reitz
-https://www.apache.org/licenses/LICENSE-2.0
+requests - Apache 2.0  
+Copyright 2015 Kenneth Reitz  
+https://www.apache.org/licenses/LICENSE-2.0  
 
-Pillow - HPND
-Copyright (c) 2010-2024 by Jeffrey A. Clark and contributors
-https://github.com/python-pillow/Pillow/blob/main/LICENSE
+Pillow - HPND  
+Copyright (c) 2010-2024 by Jeffrey A. Clark and contributors  
+https://github.com/python-pillow/Pillow/blob/main/LICENSE  
 
-llama-cpp-python - MIT
-Copyright (c) 2023 Andrei Betlen
-https://opensource.org/licenses/MIT
+llama-cpp-python - MIT  
+Copyright (c) 2023 Andrei Betlen  
+https://opensource.org/licenses/MIT  
 
-AlphaRoute - Apache 2.0
-Copyright (c) NamanAgnih0tri
-https://www.apache.org/licenses/LICENSE-2.0
+AlphaRoute - Apache 2.0  
+Copyright (c) NamanAgnih0tri  
+https://www.apache.org/licenses/LICENSE-2.0  
